@@ -6,7 +6,7 @@ This archive is a branch of the work that WTV-411 did before leaving the scene.
 Please see the Wiki for more information about what is archived and how you can help.
 
 
-~Original Description~ 
+[Original Description] 
 An (at the moment) partial archive of content saved from the MSN TV 2 service. 
 This was originally being maintained on Archive.org since 2021, but I have moved it to GitHub to increase accessibility. 
 This archive mainly covers the home page and center content hosted on msntv.msn.com, what little of the main web services were saved from the MSN TV SG servers (sgX.msntv.msn.com), and MSN TV help content, hosted on sgX.msntv.msn.com and help.msn.com.
