@@ -1,0 +1,4897 @@
+<HTML>
+	<!--
+
+	Shell.html
+
+	Shell.html is a script-only HTML document that is loaded into an off-screen browser
+	context.  It remains active for the lifetime of the application and manages state
+	transitions and event handlers.
+
+-->
+	<HEAD>
+		<SCRIPT language="Javascript" src="../Javascript/TVShell.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/SigninPanel.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/Panels.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/ServiceList.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/ConnectionManager.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/ConnectionErrors.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/MSNTVService.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/VKCodes.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/DiplomaSettings.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="msntv:/msntv_progress_loc.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/ProgressPanel.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/SupportedPrinters.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/Patcher.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/Wireless.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/HomeNetworking.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/Provisioning.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/ContentPaneHelp.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/TaskScheduler.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/MediaRender.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/LanguageCode.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/GuestUser.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/idcrl.js"></SCRIPT>
+		<SCRIPT language="Javascript" src="../Javascript/print.js"></SCRIPT>
+		<SCRIPT language="Javascript" id="ShellResourceFile" src="msntv:/msntv_shell_loc.js"></SCRIPT>
+		<SCRIPT language="Javascript" id="ResourceFile" src=""></SCRIPT>
+
+<SCRIPT language="Javascript">
+	TVShell.Message("MSNTV: Shell.html starting...\n");
+	// Individual panel definitions:
+	// function Panel(name, URL, type, style, z_order, historySize, destroyBrowserOnHide);
+
+	var PanelManager = TVShell.PanelManager;
+	var DeviceControl = TVShell.DeviceControl;
+	var MCE = TVShell.MediaCenter;
+
+	DeviceControl.Restore();
+
+	// restore media history and set size max size of history lists
+	TVShell.MediaHistory.Restore();
+	TVShell.MediaHistory.MaxSize = 15;
+	
+	var HomeNetworking = null;
+	var flavor = TVShell.SystemInfo.Flavor;
+
+	var playedHomeBrandSound = false;
+
+	var lastSuppressedPopupURL = null;
+	var popupControl = null;
+	var popupControlBeingLoaded = null;
+	
+	var redirectControl = null;
+	var redirectControlBeingLoaded = null;
+
+    var g_CurrentTask = null;
+	var g_PendingURL  = null;
+	var g_HidingPanelName = null;
+	var g_Spaces = null;
+	var g_SkyDrive = null;
+
+	var g_SwitchFavoritesContent=false;
+	var g_FavoritesContentURL="";
+	var g_ShowFavoritesPanel=false;
+
+	var g_proxySettingWithoutAcceleNet=new Array();
+	
+	var Result_Positive	= 0;
+	var Result_Negative	= 1;
+	var Result_Default	= 2;
+
+	var impanel;
+	var mainPanel = PanelManager.Item("main");
+
+	var SND_ASYNC = 0x0001;
+	var SND_LOOP  = 0x0008;
+	var connectingSoundID = 0;
+	
+	var MediaCustomboxUp = false;
+
+	var DeferPopupHideState = DPHS_DISABLED;
+	var DPHS_DISABLED = 0;
+	var DPHS_EARLYNAVIGATE = 1;
+
+	var WANConnectDateTime;
+	var WANConnectDateSet;
+	var WANDuringConnectionAttempt;
+	var WANConnectPhoneNumber = "";
+	var WANNarrowbandRates = "";
+
+	// Size and show the main panel.
+	SetStartRect(mainPanel, new FullRectangle(0,0,0,0) );
+	PanelManager.Show("main");
+
+	var mediaPanelW = 560;
+	var mediaPanelH = 340;
+	
+	var statusHeight = STATUS_HEIGHT;
+
+	var statuspanel = new Panel("statusbar", "msntv:/Panels/statusBar.html",
+								APP_PANEL_TYPE, STATIC_PANEL_STYLE, 80,0, false);
+	statuspanel.selectable = false;
+
+	var menupanel = new Panel("menupanel", "msntv:/Panels/Menu.html",
+								APP_PANEL_TYPE, SLIDING_PANEL_STYLE,60,0,false);
+	var progresspanel = new Panel(PROGRESS_PANEL_NAME, "msntv:/Panels/Progress.html",
+								  APP_PANEL_TYPE, SLIDING_PANEL_STYLE,75,0,false);
+	var dy = TVShell.DeviceControl.ScreenHeight;
+	progresspanel.step = new Step(0, dy, 0, dy);
+	progresspanel.modal = true;
+	progresspanel.transitionsoundenabled = false;
+
+	var reconnectpanel = new Panel("reconnect", "msntv:/Panels/Reconnect.html",
+								  APP_PANEL_TYPE, SLIDING_PANEL_STYLE,75,0,false);
+	reconnectpanel.modal = true;
+	reconnectpanel.transitionsoundenabled = false;
+
+	var idlewarnpanel = new Panel("idlewarn", "msntv:/Panels/IdleWarningPanel.html",
+									SYSTEM_PANEL_TYPE, POPUP_PANEL_STYLE, 90, 0, false);
+	idlewarnpanel.start = new CenteredRectangle(LARGE_DIALOG_WIDTH,LARGE_DIALOG_HEIGHT);
+	idlewarnpanel.end = new CenteredRectangle(LARGE_DIALOG_WIDTH,LARGE_DIALOG_HEIGHT);
+	idlewarnpanel.modal = true;
+
+	var alertpanel = new Panel("alert", "msntv:/Panels/Alert.html",
+							   ALERT_PANEL_TYPE, SLIDING_PANEL_STYLE,90,0,false);
+	alertpanel.start = new BottomRectangle(56, -56);
+	alertpanel.end = new BottomRectangle(56, 0);
+	alertpanel.step = new Step(10, 10, 10, 10);
+	alertpanel.selectable = false;
+	alertpanel.transitionsoundenabled = false;
+
+	var gotopanel = new Panel("gotopanel", "msntv:/Panels/Goto.html",
+							  APP_PANEL_TYPE, SLIDING_PANEL_STYLE,60,0,false);
+
+	var favoritespanel = new Panel("favoritespanel", "msntv:/Favorites/FavoritesSync.html",
+							  APP_PANEL_TYPE, SLIDING_PANEL_STYLE,60,0,false);
+
+	var recentpanel = new Panel("recentpanel", "msntv:/Panels/Recent.html",
+								APP_PANEL_TYPE, SLIDING_PANEL_STYLE,60,0,false);
+	var mediapanel = new Panel("mediapanel", "msntv:/media/media.htm",
+							 APP_PANEL_TYPE, SLIDING_PANEL_STYLE,60,0,false);
+	mediapanel.refreshenabled = true;
+
+    var sourcepanel = new Panel("source", "msntv:/Panels/sourcepanel.html",
+								  SYSTEM_PANEL_TYPE, STATIC_PANEL_STYLE,100,0,true);
+	sourcepanel.start = new FullRectangle(0,0,0,0);
+
+    var findpanel = new Panel("find", "msntv:/tvshell/find.htm",
+								  APP_PANEL_TYPE, SLIDING_PANEL_STYLE,60,0,true);
+	impanel = new Panel("impanel", "msntv:/IM/IMPanel.html",
+							APP_PANEL_TYPE, SLIDING_PANEL_STYLE,60,0,false);
+
+	var autopanel = new Panel("autopanel", "msntv:/Autopanel/autopanel.htm",  APP_PANEL_TYPE, SLIDING_PANEL_STYLE,60,0,false);
+
+	var viewdocpanel = new Panel("viewdocpanel", "msntv:/Panels/ViewDocTree.html",
+							  SYSTEM_PANEL_TYPE, STATIC_PANEL_STYLE,100,0,true);
+	viewdocpanel.start = new FullRectangle(0,0,0,0);
+
+
+	var printsettingspanel = new Panel("printsettings", "msntv:/Panels/printsettings.html",
+							  APP_PANEL_TYPE, SLIDING_PANEL_STYLE,60,0,false);
+
+	var servicepanel = new Panel("service", "msntv:/Shell/empty.html",
+								APP_PANEL_TYPE, STATIC_PANEL_STYLE, 1, 0, false);
+	servicepanel.start = new BottomRectangle(0, 0);
+	servicepanel.selectable = false;
+
+	var signinpanel = new Panel("signinpanel", "msntv:/Panels/signin.html",
+								APP_PANEL_TYPE, SLIDING_PANEL_STYLE,60,0,false);
+	// Customer Feedback and Report Panel
+	var cfarpanel = new Panel("cfarPanel", "msntv:/Shell/empty.html",
+							SYSTEM_PANEL_TYPE, POPUP_PANEL_STYLE, 60, 0, true);
+	cfarpanel.start = new CenteredRectangle(LARGE_DIALOG_WIDTH, LARGE_DIALOG_HEIGHT);
+	cfarpanel.end = new CenteredRectangle(LARGE_DIALOG_WIDTH, LARGE_DIALOG_HEIGHT);
+
+
+	// Popup window panel
+	var popuppanel              = new Panel("popuppanel", "msntv:/Shell/Empty.html", APP_PANEL_TYPE, STATIC_PANEL_STYLE, 51, 0, true);
+	popuppanel.start            = new FullRectangle(0,0,0,0);
+	popuppanel.end              = new FullRectangle(0,0,0,0);
+	popuppanel.refreshenabled   = true;
+
+	AdjustPanelSizes(PanelManager,0);
+
+	// DeviceControl
+	var LED_Off 		= 0;
+	var LED_On			= 1;
+	var LED_BlinkSlow	= 2;
+	var LED_BlinkMedium	= 3;
+	var LED_BlinkFast	= 4;
+
+	// Init object
+	var PowerState_On = 0;
+	var PowerState_Off = 1;
+
+	// Used for IM reconnect
+	MSTATE_UNKNOWN				= 0;
+	MSTATE_OFFLINE				= 0x1;
+	MLOGOFFREASON_UNKNOWN		= 0;
+	MLOGOFFREASON_NETWORKDOWN	= 1;
+
+	var g_IMPanelCompleted=false;
+	var g_DisplayNarrowbandTips = false;
+	var g_DisplayingNarrowbandTips = false;
+
+	function RemovePanel(name)
+	{
+		TVShell.BuiltinServiceList.Remove("panel::"+name);
+		TVShell.ServiceList.Remove("panel::"+name);
+		PanelManager.Remove(name);
+	}
+
+	//
+	// AddPanels - Add all of the panels for a particular state that are specified
+	//             in the shell's property list.
+	//
+	function AddPanels(state)
+	{
+		var PanelList = TVShell.Property("Panels\\"+state);
+		var i;
+
+		if (!PanelList)
+			return;
+
+		for (i = 0; i < PanelList.Count; i++) {
+			var PanelName = PanelList.Tag(i);
+			var PanelURL = PanelList(PanelName);
+			if (PanelName && PanelURL) {
+				TVShell.Message("AddPanels("+state+"): "+PanelName+" = "+PanelURL);
+				var Panel = PanelManager.Add(PanelName);
+				Panel.GotoURL(PanelURL);
+			}
+		}
+	}
+
+	//
+	// RemovePanels - Remove any panels added by AddPanels for a particular state
+	//
+	function RemovePanels(state)
+	{
+		var PanelList = TVShell.Property("Panels\\"+state);
+		var i;
+
+		if (!PanelList)
+			return;
+
+		for (i = 0; i < PanelList.Count; i++) {
+			var PanelName = PanelList.Tag(i);
+			TVShell.Message("RemovePanels("+state+"): "+PanelName);
+			RemovePanel(PanelName);
+		}
+	}
+
+	//
+	// Add the always-present offline panels
+	//
+	function AddOfflinePanels(PanelManager)
+	{
+		// Menu and Media panel added only if registered.
+		if (IsSignOnEnabled()) {
+			AddPanel(PanelManager, menupanel);
+			SetPanelAccel(menupanel.name, FCONTROL, "O".charCodeAt(0));  // Ctrl+O
+			SetPanelAccel(menupanel.name, 0, VK_F7);
+
+			AddPanel(PanelManager, mediapanel);
+
+			if (!InWholesaleGuestModes()) {
+				SetPanelAccel(mediapanel.name, FCONTROL, "W".charCodeAt(0));  // Ctrl+W
+				SetPanelAccel(mediapanel.name, 0, VK_LAUNCH_MEDIA_SELECT);
+			}
+		}
+
+		AddPanel(PanelManager, progresspanel);
+		AddPanel(PanelManager, findpanel);
+		AddPanel(PanelManager, signinpanel);
+
+		InitializePrinterModelList();
+		AddPanel(PanelManager, printsettingspanel);
+
+		AddPanel(PanelManager, popuppanel);
+		PanelManager.PopupPanel = popuppanel.name;
+
+		//
+		// Add debug/test panels for non-release builds
+		//
+		if (flavor != "release" && flavor != "ppe") {
+			AddPanel(PanelManager, autopanel);
+			
+			SetPanelAccel(autopanel.name,    		FCONTROL, "T".charCodeAt(0));  // Ctrl+T
+			
+			//
+			// Add these iff we are in devmode
+			//
+			var BootROM = new ActiveXObject("MSNTV.BootRom");
+			BootROM.Read();
+
+			if (BootROM.DebugMode) {
+				AddPanel(PanelManager, sourcepanel);
+				AddPanel(PanelManager, viewdocpanel);
+				AddPanel(PanelManager, gotopanel);
+
+				SetPanelAccel(sourcepanel.name,  		FALT,     "s".charCodeAt(0));  // Alt+s
+				SetPanelAccel(viewdocpanel.name, 		FALT,     "d".charCodeAt(0));  // Alt+d
+				SetPanelAccel(gotopanel.name,			FALT,     "g".charCodeAt(0));  // Alt+G
+			}
+		}
+
+		AddPanels("Offline");
+    }
+
+	//
+	// Remove all panels added by AddOfflinePanels
+	//
+	function RemoveOfflinePanels(PanelManager)
+	{
+		RemovePanel(menupanel.name);
+		RemovePanel(mediapanel.name);
+		RemovePanel(progresspanel.name);
+	    RemovePanel(findpanel.name);
+		RemovePanel(printsettingspanel.name);
+		RemovePanel(signinpanel.name);
+		RemovePanel(popuppanel.name);
+		
+		//
+		// Remove debug/test panels for non-release builds
+		//
+		if (flavor != "release" && flavor != "ppe") {
+			RemovePanel(sourcepanel.name);
+			RemovePanel(viewdocpanel.name);
+			RemovePanel(gotopanel.name);
+		}
+
+		RemovePanels("Offline");
+    }
+
+	function StartServicePanel(ConnectCause, PanelManager)
+	{
+		var ServicePanel = PanelManager.Item(servicepanel.name);
+
+		if (!ServicePanel)
+			ServicePanel = AddPanel(PanelManager, servicepanel);
+
+		if (ServicePanel != null) {
+			var entry;
+
+			//
+			// Look for a serviceEntry for the connection.  If there is none, pick an entry
+			// for the service panel depending on mode and availability.
+			//
+			var connectionEntry = TVShell.BuiltinServiceList(CONNECTION_SERVICE_ENTRY);
+
+			if (connectionEntry) {
+				TVShell.BuiltinServiceList.Remove(CONNECTION_SERVICE_ENTRY);
+				entry = connectionEntry;
+			} else {
+				if (ConnectCause == "connection::nightly_login")
+					entry = TVShell.ServiceList("connection::nightly_login");
+				else
+				if (ConnectCause == "mail::check")
+				    entry= TVShell.ServiceList("mail::check");
+				else {
+					//
+					// See if we are just reconnecting
+					//
+					if (ConnectCause == "connection::reconnect")
+						entry = TVShell.ServiceList("connection::reconnect");
+
+					//
+					// If we are not reconnecting, then use the Service's login entry
+					//
+					if (!entry)
+						entry = TVShell.ServiceList("connection::login");
+
+					//
+					// If the service has not given us a login entry, then fall back on prereg
+					//
+					if (!entry)
+						entry = TVShell.ServiceList("connection::prereg");
+				}
+			}
+
+			//
+			// If we found an entry, then send the service panel to it
+			//
+			if (entry) {
+				if (entry.Description != "")
+					TVShell.Message("Connecting to "+entry.Description+" service...");
+
+				var ServerError = ConnectError_NoError;
+				
+				if (!TVShell.ConnectionManager.HTTPProxy.Enabled)
+					ServerError = TVShell.ConnectionManager.Resolver.VerifyURL(entry.URL, false);
+
+				if (ServerError != ConnectError_NoError) {
+					TVShell.Message("Verification of "+entry.URL+" failed with error "+ServerError);
+					TVShell.ConnectionManager.WANAdapter.ErrorCode = ServerError;
+					return;
+				}
+
+				TVShell.Message( 'Verification Succeeded. Jumping to URL ' + entry.URL );
+				ServicePanel.GotoURL(entry.URL);
+				return;
+			}
+		}
+
+		//
+		// Oops! We either couldn't create a panel, or there is something missing
+		// from the service list that we needed.
+		//
+		setTimeout("TVShell.ConnectionManager.WANDisconnect();", 500);
+	}
+
+	function AddUserAuthorizedPanels(PanelManager)
+	{
+		// set shortcut for email 
+		var ServiceList = TVShell.ServiceList;
+		var BuiltinServiceList = TVShell.BuiltinServiceList;
+
+		entry = TVShell.BuiltinServiceList("mail::listmail");
+		if (entry) {
+			entry.KeyCode = VK_LAUNCH_MAIL;
+		}
+
+		AddPanel(PanelManager, statuspanel);
+	}
+
+	function AdjustPanelSizes(PanelManager, bottomMargin)
+	{
+		// Adjust Status Panel
+		statuspanel.start = new BottomRectangle(STATUS_HEIGHT+TVShell.DeviceControl.SafeY,-TVShell.DeviceControl.SafeY);
+		var statusbar = PanelManager.Item(statuspanel.name);
+		if (statusbar) {
+			SetStartRect(statusbar,statuspanel.start);
+		}
+
+		// Adjust Menu Panel
+		menupanel.start = new BottomRectangle(LARGE_PANEL_HEIGHT,bottomMargin-LARGE_PANEL_HEIGHT);
+		menupanel.end = new BottomRectangle(LARGE_PANEL_HEIGHT,bottomMargin);
+		var menu = PanelManager.Item(menupanel.name);
+		if (menu) {
+			SetStartRect( menu, menupanel.start );
+			SetEndRect( menu, menupanel.end );
+		}
+
+		// Adjust Progress Panel
+		progresspanel.start = new BottomRectangle(PROGRESS_PANEL_HEIGHT,bottomMargin-PROGRESS_PANEL_HEIGHT);
+		progresspanel.end = new BottomRectangle(PROGRESS_PANEL_HEIGHT,bottomMargin);
+		var progress = PanelManager.Item(PROGRESS_PANEL_NAME);
+		if (progress) {
+		    SetStartRect( progress, progresspanel.start );
+		    SetEndRect( progress, progresspanel.end );
+		}
+
+		// Adjust Reconnect panel
+		reconnectpanel.start = new BottomRectangle(PROGRESS_PANEL_HEIGHT,bottomMargin-PROGRESS_PANEL_HEIGHT);
+		reconnectpanel.end = new BottomRectangle(PROGRESS_PANEL_HEIGHT,bottomMargin);
+		var reconnect = PanelManager.Item(reconnectpanel.name);
+		if (reconnect) {
+		    SetStartRect( reconnect, reconnectpanel.start );
+		    SetEndRect( reconnect, reconnectpanel.end );
+		}
+
+		// Adjust Goto Panel
+		gotopanel.start = new BottomRectangle(LARGE_PANEL_HEIGHT,STATUS_HEIGHT-LARGE_PANEL_HEIGHT);
+		gotopanel.end = new BottomRectangle(LARGE_PANEL_HEIGHT,STATUS_HEIGHT);
+		var gotop = PanelManager.Item(gotopanel.name);
+		if (gotop) {
+			SetStartRect( gotop, gotopanel.start );
+			SetEndRect( gotop, gotopanel.end);
+		}
+
+		// Adjust Favorites Panel
+		favoritespanel.start = new BottomRectangle(LARGE_PANEL_HEIGHT,STATUS_HEIGHT-LARGE_PANEL_HEIGHT);
+		favoritespanel.end = new BottomRectangle(LARGE_PANEL_HEIGHT,STATUS_HEIGHT);
+		var favorites = PanelManager.Item(favoritespanel.name);
+		if (favorites) {
+			SetStartRect( favorites, favoritespanel.start );
+			SetEndRect( favorites, favoritespanel.end);
+		}
+
+		// Adjust Recent Panel
+		recentpanel.start = new BottomRectangle(LARGE_PANEL_HEIGHT,STATUS_HEIGHT-LARGE_PANEL_HEIGHT);
+		recentpanel.end = new BottomRectangle(LARGE_PANEL_HEIGHT,STATUS_HEIGHT);
+		var recent = PanelManager.Item(recentpanel.name);
+		if (recent) {
+			SetStartRect( recent, recentpanel.start );
+			SetEndRect( recent, recentpanel.end);
+		}
+
+		// Adjust Media Panel
+		mediapanel.start = new BottomRectangle(LARGE_PANEL_HEIGHT,bottomMargin-LARGE_PANEL_HEIGHT);
+		mediapanel.end = new BottomRectangle(LARGE_PANEL_HEIGHT,bottomMargin);
+		var media = PanelManager.Item(mediapanel.name);
+		if (media) {
+			SetStartRect( media, mediapanel.start );
+			SetEndRect( media, mediapanel.end);
+		}
+
+		//Adjust Find Panel
+		findpanel.start = new BottomRectangle(FIND_PANEL_HEIGHT,bottomMargin-FIND_PANEL_HEIGHT);
+		findpanel.end = new BottomRectangle(FIND_PANEL_HEIGHT,bottomMargin);
+		var find=PanelManager.Item(findpanel.name);
+	    if (find) {
+		    SetStartRect( find, findpanel.start );
+		    SetEndRect( find, findpanel.end );
+		}
+
+		// Adjust IM Panel
+		impanel.start = new BottomRectangle(LARGE_PANEL_HEIGHT,STATUS_HEIGHT-LARGE_PANEL_HEIGHT);
+		impanel.end = new BottomRectangle(LARGE_PANEL_HEIGHT,STATUS_HEIGHT);
+		var im = PanelManager.Item(impanel.name);
+		if (im) {
+			SetStartRect( im, impanel.start );
+			SetEndRect( im, impanel.end);
+		}
+
+		// Adjust Auto Panel
+		autopanel.start = new BottomRectangle(LARGE_PANEL_HEIGHT + 40,STATUS_HEIGHT-LARGE_PANEL_HEIGHT - 40);
+		autopanel.end = new BottomRectangle(LARGE_PANEL_HEIGHT + 50,STATUS_HEIGHT);
+		var auto = PanelManager.Item(autopanel.name);
+		if (auto) {
+			SetStartRect( auto, autopanel.start );
+			SetEndRect( auto, autopanel.end);
+		}
+	
+		//Adjust PrintSettings Panel
+		printsettingspanel.start = new BottomRectangle(PRINTSETTINGS_PANEL_HEIGHT,bottomMargin-PRINTSETTINGS_PANEL_HEIGHT);
+		printsettingspanel.end = new BottomRectangle(PRINTSETTINGS_PANEL_HEIGHT,bottomMargin);
+		var printsettings=PanelManager.Item(printsettingspanel.name);
+	    if (printsettings) {
+		    SetStartRect( printsettings, printsettingspanel.start );
+		    SetEndRect( printsettings, printsettingspanel.end );
+		}
+
+		// Adjust Signin Panel
+		signinpanel.start = new BottomRectangle(LARGE_PANEL_HEIGHT,-LARGE_PANEL_HEIGHT);
+		signinpanel.end = new BottomRectangle(LARGE_PANEL_HEIGHT,0);
+		var signin = PanelManager.Item(signinpanel.name);
+		if (signin) {
+			SetStartRect( signin, signinpanel.start );
+			SetEndRect( signin, signinpanel.end);
+		}
+	}
+
+	function AddUserAuthorizedPanels2(PanelManager)
+	{
+		// Show status panel
+		PanelManager.Show(statuspanel.name);
+
+		// Shorten main panel by the size of status panel
+		SetStartRect(mainPanel, new FullRectangle(0,0,0,statusHeight) );
+		var popup = PanelManager.Item(popuppanel.name);
+		SetStartRect(popup, new FullRectangle(0,0,0,statusHeight) );
+
+		// Adjust Menu Panel
+		var menu = PanelManager.Item(menupanel.name);
+		if (!menu) {
+			menu = AddPanel(PanelManager, menupanel);
+			SetPanelAccel(menupanel.name, FCONTROL, "O".charCodeAt(0));  // Don't use SetUserPanelAccel because of the offline menu panel
+			SetPanelAccel(menupanel.name, 0, VK_F7);
+		}
+
+		if (!PanelManager.Item(mediapanel.name)) {
+			AddPanel(PanelManager, mediapanel);
+		}
+
+		SetPanelAccel(mediapanel.name, FCONTROL, "W".charCodeAt(0));  // Ctrl+W
+		SetPanelAccel(mediapanel.name, 0, VK_LAUNCH_MEDIA_SELECT);
+
+		if (!IsGuestUser(TVShell.UserManager.CurrentUser)) {
+			AddPanel(PanelManager, favoritespanel);
+			SetUserPanelAccel(favoritespanel.name, 0,        VK_BROWSER_FAVORITES); // Favs
+			SetUserPanelAccelEx(favoritespanel.name, "save", FCONTROL, "S".charCodeAt(0), "add"); // Ctrl+S
+			SetUserPanelAccelEx(favoritespanel.name, "save", 0, VK_F5, "add");
+		}
+
+		// add Customer Feedback Report Panel
+		var cfar = PanelManager.Item( cfarpanel.name);
+		if ( !cfar)
+			cfar = AddPanel( PanelManager, cfarpanel);
+
+		//provide a margin at the bottom for the status panel
+		AdjustPanelSizes(PanelManager, statusHeight);
+
+		AddPanel(PanelManager, alertpanel);
+
+		if (!PanelManager.Item(gotopanel.name)) {
+			AddPanel(PanelManager, gotopanel);
+		}
+
+		SetUserPanelAccel(gotopanel.name,      FCONTROL, "G".charCodeAt(0));  // Ctrl+G
+		SetUserPanelAccel(gotopanel.name, 0, VK_F4);
+
+		AddPanel(PanelManager, recentpanel);
+		SetUserPanelAccel(recentpanel.name,    FCONTROL, "R".charCodeAt(0));  // Ctrl+R
+		SetUserPanelAccel(recentpanel.name,    0, VK_F9);
+
+		if (TVShell.UserManager.CurrentUser.ServiceList.Item("messenger::root") != null) {
+			AddPanel(PanelManager, impanel);
+			SetUserPanelAccel(impanel.name,        0,        VK_F8);  // F8
+		} else {
+			entry = TVShell.BuiltinServiceList.Add("Messenger");
+			entry.URL = "msntv:/OLTK/IMBlock.html";
+			entry.Safe = true;
+			entry.KeyCode = VK_F8;
+		}
+
+		AddPanels("User");
+
+		var pagePatchServiceEntry = TVShell.UserManager.CurrentUser.ServiceList.Item("connection::pagepatch");
+		if (  pagePatchServiceEntry &&  pagePatchServiceEntry.URL != "" ){
+			TVShell.SetPagePatchURL( pagePatchServiceEntry.URL);
+		}
+
+		if (g_DisplayNarrowbandTips && TimeToDisplayNarrowbandTips() &&
+			TVShell.ConnectionManager.WANState == ConnectState_Connected) {
+
+			var panel = PanelManager.Item(popuppanel.name);
+
+			if (panel) {
+				g_DisplayNarrowbandTips = false;
+				g_DisplayingNarrowbandTips = true;
+				SetSlowNarrowbandTipsDisplayedDate();
+				panel.GotoURL("msntv:/connecting/SlowNarrowbandConnection.html");
+				setTimeout( 'PanelManager.Show(popuppanel.name);' , 500 );
+			}
+		}
+	}
+
+	function IsURLInPopupList(url, list)
+	{	
+		var	lowerURL = url.toLowerCase();
+		if (popupControl != null) {
+			var nodes =	popupControl.selectNodes("/popupcontrol/" + list + "/entry");
+			for (var i = 0; nodes && i < nodes.length; i++) {
+				var listUrl = nodes[i].getAttribute("url");
+				if (listUrl && lowerURL.indexOf(listUrl.toLowerCase()) == 0) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+	
+	function GetRedirectURLInRedirectList(url)
+	{	
+		var	lowerURL = url.toLowerCase();
+		if (redirectControl != null) {
+			var nodes =	redirectControl.selectNodes("/redirectcontrol/entry");		
+			for (var i = 0; nodes && i < nodes.length; i++) {
+				var listUrl = nodes[i].getAttribute("src");
+				if (listUrl && listUrl.toLowerCase() == lowerURL) {
+					return nodes[i].getAttribute("dest");
+				}
+			}
+		}
+		return null;
+	}
+	
+	function StopLoadingMain()
+	{
+		SetProgressStopFunction(null);
+		mainPanel.Stop();
+		OnNavigateComplete2("main", mainPanel.URL, false);
+	}
+
+	function StopDownLoading()
+	{
+		SetProgressStopFunction(null);
+		PanelManager.StopDownload();
+		OnDownloadComplete("download");
+	}
+
+	function StopSlideShow()
+	{
+		if (IsMainPanelOnPage("msntv:/photo/SlideShow.html")) {
+			//TVShell.Message("Shell.html: Stopping slide show");
+			mainPanel.GoBack();
+		}
+	}
+
+	function OnDownloadBegin(name, fileName, domain)
+	{
+		if (name == "download") {
+			TVShell.Message("Shell.html: OnDownloadBegin(download): " + fileName + " from " + domain);
+			var CurrentPanel = PanelManager.FocusedPanel;
+			if (!CurrentPanel || CurrentPanel.Name != "mediapanel") {
+				var setProgressText = false;
+				if (TVShell.UserManager.CurrentUser) {
+					var MSNRadioPlusEntry = TVShell.UserManager.CurrentUser.ServiceList.Item("msn::radioplus");
+					if (MSNRadioPlusEntry && MSNRadioPlusEntry.URL) {
+						var url = MSNRadioPlusEntry.URL.toLowerCase();
+						var i = fileName.indexOf('?');
+						var name = fileName;
+						if (i > -1)
+							name = fileName.substr(0,i);
+						if (url.indexOf(domain.toLowerCase()) > -1 && url.indexOf(name.toLowerCase()) > -1) {
+							SetProgressText(L_PROGRESS_AUDIODOWNLOAD);
+							setProgressText = true;
+						}
+					}
+				}	
+				if (!setProgressText) {
+					if (IsMediumFile(fileName))
+						SetProgressText(L_PROGRESS_PLEASE_WAIT_WHILE_GET + L_PROGRESS_MEDIA_READY);
+					else {
+						if (domain != "")
+							SetProgressText(L_PROGRESS_PLEASE_WAIT_WHILE_GET + fileName + L_PROGRESS_FROM + domain+ ".");
+						else
+							SetProgressText(L_PROGRESS_PLEASE_WAIT_WHILE_GET + fileName + L_PROGRESS_READY);
+					}
+				}
+
+				SetProgressStopFunction(StopDownLoading);
+
+				ShowProgressPanel();
+				Sink.AttachEvent(PanelManager, "OnProgressChange", OnProgressChange);
+			}
+		}
+
+		if (name == "download" || name == "main")
+			if (TVShell.ConnectionManager.WANState == ConnectState_Connected)
+				DeviceControl.ConnectLED = LED_BlinkFast;
+	}
+
+	function OnBeforeUnloadMain()
+	{
+		TVShell.Message("Shell.html: OnBeforeUnloadMain " + TVShell.URL);
+		
+		// hide the progress panel if the page is showing a modal dialog onbeforeunload because the user may choose to cancel navigation
+		if(typeof(mainPanel.Document.parentWindow.event.returnValue)=="string")
+		{
+			Sink.DetachEvent(PanelManager, "OnProgressChange", OnProgressChange);
+			HideProgressPanel();
+		}			
+		// Detach from mainpanel's onbeforeunload event
+		setTimeout("mainPanel.Document.parentWindow.detachEvent('onbeforeunload', OnBeforeUnloadMain);", 1);	
+	}
+	
+	function RedirectToPhotos(URL)
+    {
+        var re = /^http:\/\/spaces.(.+).com\/(.+)\/photos/;  
+        var ret = re.exec(URL); 
+        var alias = ret ? RegExp.$2 : null;
+        var dstURL = (alias && alias!="") ? "msntv:/Photo/PhotoOrganizer.html?state=organize&storage=online&alias=" + alias : "";
+        return dstURL;
+    }
+	
+	function OnBeforeNavigate2(name, url, isLocal)
+	{
+		TVShell.Message("Shell.html: OnBeforeNavigate2("+name+", "+url+", "+(isLocal ? "local" : "non-local")+"): ");
+		
+		if (name == "main") {
+			var AvailVirtualMemory = TVShell.SystemInfo.AvailVirtualMemory;
+			var AvailPhysicalMemory = TVShell.SystemInfo.AvailPhysicalMemory;
+			TVShell.EventLog.Important("Mem(BN): P="+AvailPhysicalMemory+", V="+AvailVirtualMemory);
+
+			if (TVShell.PopupShownByCurrentMessage) {
+				DeferPopupHideState = DPHS_EARLYNAVIGATE;
+			}
+			else {
+				DeferPopupHideState = DPHS_DISABLED;
+			}
+		}
+			
+		if (name == "main" && !isLocal) {
+			if (TVShell.ConnectionManager.WANState == ConnectState_Disconnected) {
+				TVShell.Message("Shell.html: on-line navigate attempted from offline");
+				return;
+			}
+			
+			var redirectUrl = GetRedirectURLInRedirectList(url);
+			if(!redirectUrl &&  IsOnlineStorageAvailable())
+			    redirectUrl = RedirectToPhotos(url);
+			    
+			if (redirectUrl) {
+				SetProgressStopFunction(StopLoadingMain);
+				mainPanel.GotoURL(redirectUrl);
+				return;
+			}
+			
+			var CurrentPanel = PanelManager.FocusedPanel;
+			if (!CurrentPanel || CurrentPanel.Name != "mediapanel") {
+				if (IsMediumFile(url))
+				{
+					if ( MCE.SharedViewPort.Visible || MCE.CustomViewPort.Visible )
+					{
+						TVShell.Message("ViewPort Visible: no progress media bar.");
+						return;
+					}
+					SetProgressText(L_PROGRESS_PLEASE_WAIT_WHILE_GET + L_PROGRESS_MEDIA_READY);
+				}
+				else
+				{
+					if ( TVShell.Utilities.IsMSNTVURL( url ) )
+					{
+						SetProgressText(L_PROGRESS_CONTACTING_MSNTV );
+					}
+					else
+					{
+						var domain = TVShell.Utilities.DomainOfUrl( url );
+						if ( domain == null ) domain = url;
+						SetProgressText(L_PROGRESS_CONTACTING + " " + domain );
+					}
+				}
+				
+				SetProgressStopFunction(StopLoadingMain);
+
+				ShowProgressPanel();
+				Sink.AttachEvent(PanelManager, "OnProgressChange", OnProgressChange);
+				
+				// Attach to mainpanel's onbeforeunload event
+				mainPanel.Document.parentWindow.attachEvent("onbeforeunload", OnBeforeUnloadMain);
+				
+				lastSuppressedPopupURL = null; // Clear last popup url.
+				return;
+			}
+		}
+	}
+
+	function OnProgressChange(name, range)
+	{
+		if (name == "main" || name == "download") {
+			SetProgressPercent(range);
+		}
+	}
+
+	function OnDownloadComplete(name)
+	{
+		if (name == "download") {
+			TVShell.Message("Shell.html: OnDownloadComplete("+ name + "): " + mainPanel.URL);
+			Sink.DetachEvent(PanelManager, "OnProgressChange", OnProgressChange);
+			HideProgressPanel();
+		}
+
+		if (name == "download" || name == "main") {
+			if (TVShell.ConnectionManager.WANState == ConnectState_Connected)
+				DeviceControl.ConnectLED = LED_On;
+			else
+				DeviceControl.ConnectLED = LED_Off;
+		}
+	}
+
+	function OnBeforeShow(name)
+	{
+		if(name.indexOf("popup")==0)
+			g_PopupThumbnailCaptured=false;
+
+		if ( name != "main" && name != "statusbar" )
+		{			
+			if (name == "favoritespanel") 
+			{
+			    // turn page transition off because for the first time this panel goes up
+				PanelManager.Item(name).PageTransitionOn = false;
+			}
+			else if ( name == "mediapanel"){
+				HideProgressPanel();
+			}
+			
+			setTimeout(LayoutStatusPanel,1);
+		}		
+	}
+
+	function ScaleNonMcePage(panel)
+	{
+		if (!UNDER_NT//Skip if we're not on XP
+			|| panel == null
+			//If a page does not have IsMSNTVScalingEnabled(), we
+			//assume that we should scale. This gives us a
+			//reasonable default for viewing normal web pages in the browser
+		    || (panel.Document.parentWindow.IsMSNTVScalingEnabled
+		        && !panel.Document.parentWindow.IsMSNTVScalingEnabled())
+			||IsMCEPage(panel))
+			return;
+
+		if ( (!TVShell.DeviceControl.FullScreen && panel.Name == "main")
+			 || (TVShell.DeviceControl.FullScreen) )
+		{
+			if (panel.Document.parentWindow.onMSNTVScaleEvent)
+				panel.Document.parentWindow.onMSNTVScaleEvent();
+			else
+				panel.Document.body.style.zoom = GetMSNTVScale();
+		}
+		panel.Relayout();
+	}
+
+	function OnAfterFullScreenModeChange(name)
+	{
+		if (name == "shell")
+		{
+			var s = PanelManager.Item(statuspanel.name);
+			var bottomMargin = s != null ? STATUS_HEIGHT : 0;
+			AdjustPanelSizes(PanelManager, bottomMargin);
+
+			for (i = PanelManager.Count-1; i >= 0 ; i--)
+			{
+				panel = PanelManager.Item(i);
+				if (panel.Name == "main")
+					ScaleNonMcePage(panel);
+				else if (panel.Height > 0)
+					panel.GotoURL( panel.URL );
+			}
+
+			if (DeviceControl.FullScreen)
+				setTimeout(function() {
+								alert( "Use Shift+F11 to leave full screen" );
+								}, 1);
+		}
+	}
+
+	function OnAfterShow(name)
+	{
+		TVShell.Message( "Shell: OnAfterShow(" + name + ")" );
+
+		if (name == "favoritespanel") 
+		{
+			// turn page transition on 
+			PanelManager.Item(name).PageTransitionOn = true;
+		}
+	}
+
+	function OnBeforeHide(name)
+	{
+		if (name == "favoritespanel") 
+		{
+		    // turn page transition false for favorites panel 
+			PanelManager.Item(name).PageTransitionOn = false;
+		}
+	}
+
+ 	function SetStatusBarInvisibility( hidePanel )
+	{
+		var mainPanel    = TVShell.PanelManager.Item("main");
+		var statusPanel  = TVShell.PanelManager.Item("statusbar");
+
+		if ( mainPanel == null || statusPanel == null )
+			return;
+
+
+		if (hidePanel)
+		{
+			//Hide Status Panel for Cinema Now & MCE Enabled pages
+			//TVShell.Message( "Hiding status bar" );
+			PanelManager.Hide('statusbar');
+		    SetStartRect( mainPanel, new FullRectangle(0,0,0,0) );
+		}
+		else
+		{
+			// Show Status Panel for other pages.
+			if ( TVShell
+				 && TVShell.UserManager
+				 && TVShell.UserManager.CurrentUser
+				 && TVShell.UserManager.CurrentUser.IsAuthorized
+				 && TVShell.ConnectionManager.WANState== ConnectState_Connected
+				 && statusPanel.State != PanelState_Showing
+				 )
+	 		{
+				//TVShell.Message( "Showing status bar" );
+				PanelManager.Show('statusbar');
+
+				SetStartRect( mainPanel, new FullRectangle(0,0,0,statusHeight) );
+			}
+		}
+	}
+
+ 	function LayoutStatusPanel()
+	{
+		var mainPanel    = TVShell.PanelManager.Item("main");
+		var statusPanel  = TVShell.PanelManager.Item("statusbar");
+
+		if ( mainPanel == null || statusPanel == null )
+			return;
+
+		//true hides the bar, false shows it.
+		var hidePanel = IsMCEPage(mainPanel);
+		if ( hidePanel == true )
+		{
+			//Make certain that there are no other panels that are visible
+			var i;
+			var panel;
+			for (i = PanelManager.Count-1; i >= 0 && hidePanel; i--)
+			{
+				panel = PanelManager.Item(i);
+				if (panel && panel.State != PanelState_Hidden
+				    && panel.Name != "main"
+				    && panel.Name != "statusbar"
+				    && panel.Name != "ScreenSaver")
+				{
+					var pos = panel.Name.indexOf("MSGBOX");
+					if( pos == 0 || pos == 1 ) // MSGBOX || AMSGBOX 
+						continue;
+					
+					if( panel.Name == "mediapanel" )
+					{
+						if ( IsPanelAViewPort(panel) )
+						{
+							//TVShell.Message("LayoutStatusPanel - MediaPanel is a ViewPort");
+							continue;
+						}
+						//TVShell.Message("LayoutStatusPanel - MediaPanel is not a ViewPort");
+					}
+					TVShell.Message( "will not hide status bar because "
+								+ panel.Name + " in state " + panel.State );
+					hidePanel = false;
+				}
+			}
+		}
+
+		SetStatusBarInvisibility( hidePanel );
+	}
+
+	function OnNavigateComplete2(name, url, isLocal)
+	{
+		TVShell.Message("Shell.html: OnNavigateComplete2("+name+", "+url+", "+(isLocal ? "local" : "non-local")+"): ");
+
+		if (name == "main") {
+			if (!isLocal) {
+				Sink.DetachEvent(PanelManager, "OnProgressChange", OnProgressChange);
+				HideProgressPanel();
+				
+				var CNEntry = TVShell.ActiveServiceList.Item("home::cinemanow");
+				var url2 = TVShell.URL;
+				if (CNEntry && url2.toLowerCase().indexOf(CNEntry.URL.toLowerCase()) == 0 && PanelManager.LayoutMode != 0) {
+					PanelManager.LayoutMode = 0;
+				}
+			}
+
+			// Make sure the popup panel is hidden whenever navigating the main panel.
+			if (DeferPopupHideState != DPHS_EARLYNAVIGATE && 
+				(!g_DisplayingNarrowbandTips || !TVShell.UserManager.CurrentUser || !TVShell.UserManager.CurrentUser.IsAuthorized))
+			{
+				PanelManager.Hide(popuppanel.name);
+			}
+		}
+
+		//setTimeout(LayoutStatusPanel,1);
+
+		var panelToOpen =  PanelManager.Item("main").GetTravelLogFlag( "openpanel" , url );
+		if ( panelToOpen && panelToOpen != ""  )
+		{
+			var index = panelToOpen.indexOf( "?" );
+			var panelURL = "";
+			if ( index > 0 )
+			{	// if a url was specified, set the panel url first
+			 	panelURL = panelToOpen.substr( index + 1 );
+				panelToOpen = panelToOpen.substr( 0 , index );
+				if ( PanelManager.Item( panelToOpen ).URL != panelURL )
+				{
+					PanelManager.Item( panelToOpen ).GotoURL( panelURL );
+				}
+			}
+				
+			setTimeout( 'PanelManager.Show( "' + panelToOpen + '" );' , 500 );
+			PanelManager.Item("main").SetTravelLogFlag( "openpanel" , "" );
+		}
+
+		// If the popup panel has navigated to a non-local URL, the next navigation returns
+		// to the main panel
+		if (name == popuppanel.name && !isLocal) {
+			PanelManager.Item(name).NavigateTarget = "main";
+		}
+		
+		// This causes the pop up panel to show when we finish loading it
+		if (name.indexOf("popup::") == 0 && TVShell.Property("ShowPopUps")) {
+			PanelManager.Show(name);
+		}
+	}
+
+	function ShowErrorBox(ErrorText)
+	{
+		PanelManager.CustomMessageBox(ErrorText, "", L_SHELL_OK_BUTTON, 0, "0x80071236");
+	}
+
+	function OnShellExecute(command, result)
+	{
+		if (!TVShell.IsOn)
+			return;
+
+		TVShell.Message("Shell: OnShellExecute(" + command+ ")");
+
+		// If some event handler before us has decided what to do, then we ignore it
+		if (result.Value != Result_Default)
+			return;
+
+		if (command == 'unsupportedCmd.exe' || command == 'unsupportedMedia.exe') {
+			HideProgressPanel();
+			setTimeout("mainPanel.GotoURL('msntv:/DocViewer/Error.html?error=UnsupportedContent')", 1);
+			result.Value = Result_Positive;
+		}
+	}
+
+	function RemovePopUpPanels()
+	{
+		var i;
+
+		for (i = PanelManager.Count-1; i >= 0; i--)
+			if (PanelManager.Item(i).Name.indexOf("popup::") == 0)
+				PanelManager.Remove(i);
+	}
+
+	function RemovePhotoPanels()
+	{
+		RemovePanel("PhotoPickerPanel");
+		RemovePanel("UploadPhotoPanel");
+	}
+	
+	function RemoveUserAuthorizedPanels(PanelManager)
+	{
+		TVShell.Message("Shell.html - RemoveUserAuthorizedPanels");
+
+		TVShell.Property.Remove("findText");
+		
+		// Remove any pop-up panels
+		RemovePopUpPanels();
+
+		// remove shortcut for email 
+		entry = TVShell.BuiltinServiceList("mail::listmail");
+		if (entry) {
+			entry.KeyCode = 0;
+		} 
+		
+		RemovePanel(statuspanel.name);
+		RemovePanel(alertpanel.name);
+		if (flavor == "release" || flavor == "ppe") {
+			RemovePanel(gotopanel.name);
+		}
+		else {
+			SetUserPanelAccel(gotopanel.name, 0, 0);
+		}
+		RemovePanel(impanel.name);
+        g_IMPanelCompleted = false;
+
+		RemovePanel(favoritespanel.name);
+		RemovePanel(recentpanel.name);
+		RemovePanel(cfarpanel.name);
+
+		//do not provide a margin at the bottom for the status panel
+		AdjustPanelSizes(PanelManager, 0);
+		SetStartRect( mainPanel, new FullRectangle(0,0,0,0) );
+		var popup = PanelManager.Item(popuppanel.name);
+		SetStartRect(popup, new FullRectangle(0,0,0,0) );
+
+		RemovePhotoPanels();
+
+		var panel = PanelManager.Item(mediapanel.name);
+
+		if (panel && InWholesaleGuestModes()) {
+			SetPanelAccel(mediapanel.name, FCONTROL, 0);
+			SetPanelAccel(mediapanel.name, 0, 0);
+		}
+
+		RemovePanels("User");
+	}
+
+	function RemoveOnlinePanels(PanelManager)
+	{
+		RemovePanel(servicepanel.name);
+		RemovePanel(idlewarnpanel.name);
+		RemovePhotoPanels();
+	}
+
+	function RemoveAllPanels(PanelManager)
+	{
+		RemoveUserAuthorizedPanels(PanelManager);
+		RemoveOnlinePanels(PanelManager);
+		RemoveOfflinePanels(PanelManager);
+
+		RemovePanel(reconnectpanel.name);
+		RemovePanel(progresspanel.name);
+		RemovePanel(signinpanel.name);
+	}
+
+	function IsPanelAViewPort(panel)
+	{
+		if (panel.Name != "mediapanel")
+			return false;
+
+		return TVShell.Property("MediaPanelIsViewPort") ? true : false;
+	}
+
+	
+	function NeedUpdate()
+	{
+		var rom = new ActiveXObject("MSNTV.BootRom");
+
+		rom.Read();
+		if (  rom.UpdateURL != "" && rom.Hash != "" ) {
+			var updater = new ActiveXObject("MSNTV.UpdateDownload");
+			if ( updater.UpdateCapable && !updater.RebootRequired ) {
+				return true;
+			}
+		}
+		var PersistentProperties = TVShell.Property("Persistent/");
+		if ( PersistentProperties && PersistentProperties("UpdateLoopTestMode") == 1 ) {
+			TVShell.Message("Starting with update loop test");
+			return true;
+		}
+		return false;
+	}
+	
+	function OnPowerOn(PowerCause)
+	{
+
+		TVShell.Message("PowerCause = " + PowerCause);
+		TVShell.Message("TVShell.Init.PowerState = " + TVShell.Init.PowerState);
+
+
+		DeviceControl.PowerLED = LED_BlinkSlow;
+
+		// Do update if required
+		if (NeedUpdate()) {
+			TVShell.PowerCause = "FullUpdate";
+			TVShell.ScreenSaver.CurrentSaver = "Butterfly";
+			var entry = TVShell.BuiltinServiceList.Add("RunOnce");
+			entry.URL = "msntv:/Update/FullUpdate.html";
+		}
+
+		// turn off audio if box is auto powered on
+		if ( ( PowerCause != "Keyboard" ) && ( TVShell.Init.PowerState== PowerState_Off ) )
+		{
+			DeviceControl.PlayMute = true;
+		}
+		else
+		{
+			DeviceControl.PlayMute = false;
+		}
+
+		DeviceControl.PlaySound("Power_On");
+		playedHomeBrandSound = false;
+
+		TVShell.URL = "msntv:/Shell/PowerOn.html";
+
+		InitializeServiceList();
+
+		//
+		// Offline services are things like photos, music, etc.
+		//
+		if (PowerCause != "FullUpdate" && PowerCause != "AutoUpdate"&& PowerCause != "AutoMailCheck" )
+			InitializeOfflineServices();
+
+		AddOfflinePanels(PanelManager);
+
+		//
+		// The service is not connected
+		//
+		TVShell.ConnectionManager.ServiceState = Service_LoggedOff;
+
+		TVShell.ActiveServiceList = TVShell.ServiceList;
+		
+		//
+		// Determine starting URL
+		//
+		// In priority order:
+		//
+		//	1. "RunOnce" service list entry, deleted after first use
+		//	2. "RunOnce" property list entry, deleted after first use
+		//	3. "RunStart" service list entry
+		//	4. "RunStart" property list entry
+		//	5. Sign On (which has its own set of priorities)
+		//
+		var StartURL;
+
+		if (!StartURL) {	
+			var RunOnce = TVShell.ServiceList("RunOnce");
+			if (RunOnce) {
+				StartURL = RunOnce.URL;
+				TVShell.ServiceList.Remove("RunOnce");
+			}
+		}
+
+		if (!StartURL) {
+			var RunOnce = TVShell.Property("RunOnce");
+			if (RunOnce) {
+				StartURL = RunOnce;
+				TVShell.Property.Remove("RunOnce");
+			}
+		}
+
+		if (!StartURL) {
+			var RunStart = TVShell.ServiceList("RunStart");
+			if (RunStart)
+				StartURL = RunStart.URL;
+		}
+
+		if (!StartURL) {
+			var RunStart = TVShell.Property("RunStart");
+			if (RunStart)
+				StartURL = RunStart;
+		}
+
+		if (!InOnlyGuestMode()) {
+			AddSystemInfoServiceListEntry();
+		}
+
+		if (StartURL)
+			TVShell.URL = StartURL;
+		else
+			GotoSignOn();
+
+
+		DeviceControl.TVEncoder.OutputEnable = true;
+		TVShell.ScreenSaver.Enable = true;
+		TVShell.PrintManager.LoadObject();
+
+		//
+		// Don't remember the power on state if we are just temporarily powering on,
+		// otherwise keep track of it so that if we lose power, we will come back up in
+		// whatever our previous state was.
+		//
+		if (PowerCause != "AutoUpdate" && PowerCause != "AutoMailCheck" && PowerCause!="FullUpdate" && PowerCause != "Auto") 
+		{
+			TVShell.Init.PowerState = PowerState_On;
+			TVShell.Init.Save();
+            TVShell.Message("Power on stat is saved");
+			var BootROM = new ActiveXObject("MSNTV.BootRom");
+
+			BootROM.Read();
+			BootROM.PowerOnState = true;
+			BootROM.Flush();
+		} 
+
+		DeviceControl.PowerLED = LED_On;
+
+		TVShell.DeviceControl.MessageLED = TVShell.DeviceControl.SavedMessageLED;
+
+		TVShell.FinishPowerOn();
+		
+		TVShell.ScreenSaver.UserActive(); // Wakeup screen saver
+		
+		if(TVShell.PowerCause == "Auto" && TVShell.Init.PowerState == PowerState_Off)
+		{
+			TVShell.PowerOff();
+			return;
+		}
+
+
+		if ( !TVShell.SystemInfo.EEPROMValid ) {
+			TVShell.PanelManager.CustomMessageBox(L_SHELL_THIS_TEXT + ProductShortName + L_SHELL_ETHERNET_ERROR, L_SHELL_ETHERNET_FAILURE, L_SHELL_OK_BUTTON, 0, "");
+		}
+
+        //set image compression quality for diap-up web acceleration
+		TVShell.Utilities.WriteRegistry(2,"SOFTWARE\\ICT\\AcceleNet\\Compression\\Web","ImageQuality",TVShell.ConnectionManager.ImageQuality);
+
+		// Start LAN connection
+		TVShell.ConnectionManager.LANConnect("LAN::Reconnect");
+		var PersistentProperty=TVShell.Property("Persistent/")
+	    if(PersistentProperty)
+		{
+			var UsageStr=PersistentProperty("NightlyRebootUsageLog");
+			TVShell.Message("UsageStr="+UsageStr);
+			if(UsageStr)
+				  TVShell.EventLog.Usage("NightlyRebootUsageLog", UsageStr);
+		}
+
+	}
+
+	var ReadyState_Uninitialized = 0;
+	var ReadyState_Loading = 1;
+	var ReadyState_Loaded = 2;
+	var ReadyState_Interactive = 3;
+	var ReadyState_Complete = 4;
+
+	function AllPanelsComplete(WaitCount)
+	{
+		TVShell.Message("AllPanelsComplete:  waitcount ="+WaitCount);
+	    
+		for (i = PanelManager.Count-1; i >= 0; i--) {
+			var WebBrowser = PanelManager.Item(i).WebBrowser;
+
+			TVShell.Message("Index = "+i+"      Name = "+PanelManager.Item(i).Name+ " count =" + PanelManager.Count);
+			if(PanelManager.Item(i).Name!="shell")
+			{
+				if (WebBrowser && WebBrowser.ReadyState < ReadyState_Complete) {
+					TVShell.Message("AllPanelsComplete: Waiting for panel "+PanelManager.Item(i).Name+" in readystate "+WebBrowser.ReadyState+" count ="+WaitCount);
+
+					if (WaitCount > 50) {
+						TVShell.Reboot();
+						return true; // Should remove panel?
+					}
+
+					if (WaitCount > 20)
+						PanelManager.Item(i).Stop();
+					
+					TVShell.Message("AllPanelsComplete: return false");
+
+					return false;
+				}
+			}
+		}
+
+		TVShell.Message( 'AllPanelsComplete: Done : success ' );
+		return true;
+	}
+
+	//
+	// Wait for the network to disconnect and all panels to be complete before
+	// completeting a power off sequence
+	//
+	function PowerOffWhenComplete(WaitCount)
+	{
+
+		TVShell.Message("PowerOffWhenComplete:  waitcount ="+WaitCount);
+
+		if (AllPanelsComplete(WaitCount))
+			switch (TVShell.ConnectionManager.WANState) {
+				case ConnectState_Connected:
+					TVShell.ConnectionManager.WANDisconnect();
+					break;
+	
+				case ConnectState_Disconnected:
+					// Tell the shell that we're ready to Power On again!
+					DeviceControl.PowerLED = LED_Off;
+					TVShell.FinishPowerOff();
+					return;
+			}
+
+		setTimeout("PowerOffWhenComplete("+(WaitCount+1)+");", 200);
+	}
+
+	function QuitWhenComplete(WaitCount)
+	{	
+		TVShell.Message("QuitWhenComplete:  waitcount ="+WaitCount);
+
+		if (AllPanelsComplete(WaitCount))
+			switch (TVShell.ConnectionManager.WANState) {
+				case ConnectState_Connected:
+					TVShell.ConnectionManager.WANDisconnect();
+					break;
+	
+				case ConnectState_Disconnected:
+ 					DeviceControl.PowerLED = LED_Off;
+					RemovePanel("main");
+					TVShell.FinishPowerOff();
+					TVShell.Quit();
+					return;
+			}
+
+		setTimeout("QuitWhenComplete("+(WaitCount+1)+");", 200);
+	}
+
+	function OnPowerOff()
+	{
+		try {
+			// Start the LED indicator to show that we're working
+			DeviceControl.PowerLED = LED_BlinkSlow;
+
+			// Grab the memory state before we tear everything down
+			var MemoryState = TVShell.EventLog.SystemMonitor.MemoryState;
+
+			// Turn off UI sounds
+			DeviceControl.PlayMute = true;
+
+			// Stop audio.
+			StopDialingMusic();
+
+			DeviceControl.StopPlayingSound();
+			
+			// Turn off the display
+			DeviceControl.TVEncoder.OutputEnable = false;
+
+			// Remove the active page
+			TVShell.URL = "msntv:/Shell/PowerOff.html";
+
+			// Persist print setting 
+			TVShell.PrintManager.SaveObject();
+
+			// Switch to main panel
+			PanelManager.Show("main");
+
+			// Turn off the screen saver and keep it from starting while
+			// we are off.
+			TVShell.ScreenSaver.Stop();
+			TVShell.ScreenSaver.Enable = false;
+
+			// Remove all panels (except for main)
+			RemoveAllPanels(PanelManager);
+
+			// Sign out the current user
+			TVShell.UserManager.ClearCurrentUser();
+
+			// If a user was authorized, then the MeterManager, PolicyManager,
+			// and LoginManager would have already been cleaned up.
+
+			// No need for metering
+			TVShell.MeteringManager.Stop();
+
+			// Cleanup on PolicyManager and LoginManager
+			TVShell.PolicyManager.Cleanup();
+			TVShell.LoginManager.Cleanup();
+
+			// CleanUp PhotoManager caches and temporary photos
+			TVShell.PhotoManager.ClearThumbnailRequestQueue();
+			TVShell.PhotoManager.ClearImageResizeRequestQueue();
+			TVShell.PhotoManager.ClearTempPhotoDirectories();
+
+			//
+			// The service is no longer connected
+			//
+			TVShell.ConnectionManager.ServiceState = Service_LoggedOff;
+
+	        // Unmount all shares and lose passwords that are mark as 'no save'
+		    if (HomeNetworking)
+	            HomeNetworking.PowerOff();
+
+			// Hangup
+			TVShell.ConnectionManager.WANDisconnect();
+			TVShell.ConnectionManager.LANDisconnect();
+
+			// Clear the non-persistent service list
+			TVShell.BuiltinServiceList.Clear();
+
+			// Remember power state
+			TVShell.Init.PowerState = PowerState_Off;
+			TVShell.Init.Save();
+
+			// Make sure all the ConnectionManager settings are saved and flushed to the bootrom
+			ConnectionManagerSave();
+
+			var BootROM = new ActiveXObject("MSNTV.BootRom");
+
+			BootROM.Read();
+			BootROM.PowerOnState = false;
+			BootROM.Flush();
+
+			// The threshold for memory to decide if we want to exit the browser while powering off is a litle higher (5MB) than Memory_low (2MB)
+			var AvailVirtualMemory = TVShell.SystemInfo.AvailVirtualMemory;
+			var AvailPhysicalMemory = TVShell.SystemInfo.AvailPhysicalMemory;
+			var fReducedMemory = (AvailVirtualMemory > kReducedMemoryThreshold && AvailPhysicalMemory > kReducedMemoryThreshold) ? false : true;
+			
+			if (fReducedMemory) {
+				TVShell.EventLog.Warning("Shell: system low on memory, browser exiting...");
+				RemovePanel(autopanel.name);
+				setTimeout("QuitWhenComplete(0)",100);
+ 			} else
+				PowerOffWhenComplete(0);
+		}
+		catch (ex)
+		{
+			TVShell.Reboot();
+		}
+	}
+
+	//
+	// OnBeforeAuthorizationChange fires before user authorization is about to change
+	//
+	function OnBeforeAuthorizationChange(User)
+	{
+		TVShell.Message("Shell.html: OnBeforeAuthorizationChange");
+
+		if (User.IsAuthorized && !IsGuestUser(User))
+			mainPanel.History.Save();
+	}
+
+	function DetachAllOnlineStorage()
+	{
+	    // remove spaces token for the user
+	    var property = TVShell.Property;
+	    property.Remove("SpacesToken");
+	        
+	    // remove all online storage device
+	    var sm=TVShell.StorageManager;	    
+        var count = sm.Count;
+        var i;
+        for(i=count-1; i>=0; i--)
+        {
+            var sd=sm.Item(i);
+            if(sd && sd.IsNetwork)
+            {
+                var provider = sd.Provider;
+                if(provider && provider.toLowerCase()=="onlinestorage")
+                    sm.Remove(sd);
+            }
+        }
+	}
+	function isIDCRLErrorCode( theCode )
+    {
+	    // when high bit is set, it is an error
+	    if ( theCode & 0x80000000 )
+		    return true;
+
+	    return false;
+    }
+
+    function getIDCRLCode( theCode )
+    {
+	    return (theCode & 0xFF);
+    }
+
+	function IDCRLOnAuthStateChanged(result,authState,requestStatus, user, target, policy, token, webFlowUrl)
+	{
+		TVShell.Message("IDCRLOnAuthStateChanged target = " + target + " policy = " + policy);
+		TVShell.Message("token="+token);
+		TVShell.EventLog.Important("OnIDCRLAuthStateChanged: result = "+ GetResultCode(result)+"\n authState = "+ GetResultCode(authState)+"\n requestStatus = "+GetResultCode(requestStatus)+"\n user = "+user+"\n webFlowUrl = "+webFlowUrl);
+
+		if (!TVShell.UserManager.CurrentUser)
+			return;	// probably auto-email check
+		
+	    if( TVShell.UserManager.CurrentUser.EMail!=user  || 	       
+		    (isIDCRLErrorCode(authState)     || getIDCRLCode(authState)     != 0x03) || 
+		    (isIDCRLErrorCode(requestStatus) || getIDCRLCode(requestStatus) != 0x00))
+		{
+		    TVShell.Message("Shell.html: IDCRLOnAuthStateChanged : error");		
+		    return;
+	    }
+	    else
+		{
+			if (!g_SkyDrive || g_SkyDrive.serviceTarget != target)
+			{
+				if ( !g_Spaces ||  
+						(g_Spaces.serviceTarget!=target  || g_Spaces.servicePolicy!= policy ))
+				{
+					TVShell.Message("Shell.html: IDCRLOnAuthStateChanged : no spaces or not for spaces");		
+					return;
+				}
+			    
+				if ( token != "" )
+				{
+					TVShell.Message("Shell.html : spaces token: " +  token);
+					var property = TVShell.Property;
+					property.Remove("SpacesToken");
+					token = token.replace(/&/g, "&amp;");
+					property.Add("SpacesToken", token);	
+				}
+				else{
+					TVShell.EventLog.Important("Shell.html : No online storage token");  
+					if ( getIDCRLCode(result ) == 0x82 ){
+						// the server is busy, let's try again.
+						TVShell.Message("Shell.html :   let's acquire the spaces token again.");  
+						setTimeout(RequestSpacesToken,1000);
+					}
+	   			}
+	   		}//end of if(g_SkyDrive.serviceTarget != target)
+	   		else if (g_SkyDrive.serviceTarget == target)
+			{
+				//target is sky drive
+				if ( !g_SkyDrive ||  
+						(g_SkyDrive.serviceTarget!=target  || g_SkyDrive.servicePolicy!= policy ))
+				{
+					TVShell.Message("Shell.html: IDCRLOnAuthStateChanged : g_SkyDrive no spaces or not for spaces");		
+					return;
+				}
+			    
+				if ( token != "" )
+				{
+					TVShell.Message("Shell.html : Sky token: " +  token);
+					var property = TVShell.Property;
+					property.Remove("SkyToken");
+					token = token.replace(/&/g, "&amp;");
+					property.Add("SkyToken", token);	
+				}
+				else{
+					TVShell.EventLog.Important("Shell.html : No online storage token");  
+					if ( getIDCRLCode(result ) == 0x82 ){
+						// the server is busy, let's try again.
+						TVShell.Message("Shell.html :   let's acquire the spaces token again.");  
+						setTimeout(RequestSkyToken,1000);
+					}
+	   			}
+	   		}//end of else if (g_SkyDrive.serviceTarget == target)
+	   		
+	   	}
+	}
+
+	function AddSystemInfoServiceListEntry()
+	{
+		var entry = TVShell.BuiltinServiceList.Add("SystemInfo");
+		entry.URL = "msntv:/Settings/System/System.html";
+		entry.Safe = true;
+		entry.KeyCode = VK_BROWSER_FAVORITES;
+	}
+	
+    function RequestSpacesToken()
+    {
+	    if(!g_Spaces)
+	        return;
+	        
+	    g_Spaces.requestCount++;
+	    var result = TVShell.LoginManager.IDCRLAuthenticateToService(g_Spaces.serviceTarget,g_Spaces.servicePolicy);
+
+	    if(result!=0 && g_Spaces.requestCount<=g_Spaces.maxRequestCount)
+		      setTimeout(RequestSpacesToken,1000);
+	    else
+	        g_Spaces.requestCount=0;
+    }
+    
+    function RequestSkyToken()
+    {
+	    if(!g_SkyDrive)
+	        return;
+	        
+	   // g_Spaces.requestCount++;
+	   // var result = TVShell.LoginManager.IDCRLAuthenticateToService(g_Spaces.serviceTarget,g_Spaces.servicePolicy);
+	    var result = TVShell.LoginManager.IDCRLAuthenticateToService(g_SkyDrive.serviceTarget,g_SkyDrive.servicePolicy);
+
+	    if(result!=0 && g_SkyDrive.requestCount<=g_SkyDrive.maxRequestCount)
+		      setTimeout(RequestSkyToken,1000);
+	    else
+	        g_SkyDrive.requestCount=0;
+    }
+
+	//
+	// OnAuthorizationChange fires when the state of user authorization changes
+	//
+	function OnAuthorizationChange(User)
+	{
+		TVShell.Message("Shell.html: OnAuthorizationChange");
+		TVShell.MediaHistory.Clear( "PageVisits:/Video/VideoHome.html" );
+		// always reset page layout mode on sign-in/sign-out
+		PanelManager.LayoutMode = 1;
+
+		if (User.IsAuthorized) {
+			TVShell.BuiltinServiceList.Remove("SystemInfo");
+			AddUserAuthorizedPanels(PanelManager);
+
+			if (!IsGuestUser(User)) {
+				mainPanel.History.Load();
+			} else {
+				mainPanel.History.ClearRecentList();
+				mainPanel.History.ClearTypedList();
+			}
+
+			TVShell.ActiveServiceList = User.ServiceList;
+			LoginIM();
+			
+			// bringup online storage if user gets authorized
+			entry = TVShell.ActiveServiceList("onlinestorage::root");
+			//var authEntry = TVShell.ActiveServiceList("onlinestorage::authServer");
+			var authEntry = TVShell.ActiveServiceList("Skydrive::AuthServer");
+			var authLiveFileStore = TVShell.ActiveServiceList("Livefilestore::AuthServer");
+
+			if (entry && entry.URL != "" 
+				&& authEntry && authEntry.URL != "" && authEntry.Description != "" 
+			//if ( authEntry && authEntry.URL != "" && authEntry.Description != "" 
+				&& authLiveFileStore && authLiveFileStore.URL != "" && authLiveFileStore.Description != "" )
+			{
+		        if(!g_Spaces)
+		            g_Spaces = new Object();   
+              
+		        g_Spaces.server = entry.URL;
+		        //g_Spaces.server = "";
+		        g_Spaces.alias  = User.name;
+		        g_Spaces.servicePolicy = authEntry.Description;
+		        g_Spaces.serviceTarget = authEntry.URL;
+		        g_Spaces.requestCount = 0;  
+                g_Spaces.maxRequestCount = 3;
+                
+                if(!g_SkyDrive)
+					g_SkyDrive = new Object();
+				g_SkyDrive.requestCount = 0;  
+                g_SkyDrive.maxRequestCount = 3;
+                g_SkyDrive.servicePolicy = authLiveFileStore.Description;
+		        g_SkyDrive.serviceTarget = authLiveFileStore.URL;
+    		
+		        TVShell.Message("Shell.html: Spaces Service Target:" + g_Spaces.serviceTarget + " Service Policy: " + g_Spaces.servicePolicy);
+		        RequestSkyToken();
+		        RequestSpacesToken(); 
+		        HomeNetworking.AttachOnlineStorage( g_Spaces.alias, g_Spaces.server, false);		   
+	        }
+	        else{
+		        TVShell.Message("Shell.html: No Online Storage service list entry found.");
+		        //Remove the spaces
+		        g_Spaces = null;
+		        var property = TVShell.Property;
+				property.Remove("SpacesToken");
+		    }
+
+			
+			var persistentproperty=TVShell.Property("Persistent/");
+			if(persistentproperty)
+			{
+				persistentproperty.Remove("NightlyRebootUsageLog");
+				persistentproperty.Save();
+			}
+			
+		} else {
+			g_IMPanelCompleted = false;
+			DetachAllOnlineStorage();
+			TVShell.MeteringManager.Stop();
+			TVShell.PolicyManager.Cleanup();
+			TVShell.LoginManager.IDCRLUninitialize();
+			TVShell.LoginManager.Cleanup();
+			PanelManager.Hide(mediapanel.name);
+			RemoveUserAuthorizedPanels(PanelManager);
+
+			if (!InOnlyGuestMode()) {
+				AddSystemInfoServiceListEntry();
+			}
+
+			TVShell.ActiveServiceList = TVShell.ServiceList;
+			TVShell.DeviceControl.MessageLED = TVShell.DeviceControl.SavedMessageLED;
+		}
+	}
+
+    function OnUserAdded(User) 
+    {
+		var rom = new ActiveXObject("MSNTV.BootRom");
+		rom.Read();
+		var fdate = rom.FirstUseDate;
+		if (fdate == 0) {
+            TVShell.Message("OnUserAdded: setting first time use");  		
+            // 0 -> let bootrom object calculate the time since 1970
+            rom.FirstUseDate = 0;  
+            rom.Flush();
+    	}
+    }
+
+	function LogOff()
+	{
+		// If we log off while there is a currently authorized user, then assume that we
+		// may want to select a new user.
+		if (TVShell.UserManager.CurrentUser && TVShell.UserManager.CurrentUser.IsAuthorized)
+			TVShell.UserManager.ClearCurrentUser();
+
+		if (!GoingToNewPhoneBook()) {
+			GotoSignOn();
+		}
+
+		HideProgressPanel();
+		PanelManager.Hide(mediapanel.name);
+
+		RemovePanel(reconnectpanel.name);
+		playedHomeBrandSound = false;
+
+		//
+		// If we are disconnected and back on the sign in page, then reset the
+		// service state to logged off
+		//
+		if (TVShell.ConnectionManager.WANState == ConnectState_Disconnected)
+			TVShell.ConnectionManager.ServiceState = Service_LoggedOff;
+
+	}
+
+	function OnServiceStateChange(NewState, OldState)
+	{
+		TVShell.Message("Shell::OnServiceStateChange(new="+NewState+", old="+OldState+")");
+		
+		// Give the ConnectionManager a chance to see the event
+		ProviderServiceState(NewState);
+	
+		// If we are powering off or on, then don't change the page
+		if (!TVShell.IsOn)
+			return;
+
+		if (TVShell.ConnectionManager.WANCause == "FullUpdate")
+			return;
+			
+		switch (NewState) {
+			case Service_Authorized:
+				// preload IE cache
+				TVShell.LoadPersistentInternetCache();
+				HideProgressPanel();
+				break;
+
+			case Service_ReSignIn:
+				LogOff();
+
+				// Turn off the proxy so WMC will work better
+				TVShell.ConnectionManager.HTTPProxy.RemoveSettings();
+				break;
+
+			case Service_GoToTarget:
+				GotoTargetPage();
+				break;
+		}
+	}
+
+	//
+	// OnWANIdleTimer - Periodically check for user activity and maybe disconnect
+	//
+	function OnWANIdleTimer()
+	{
+		if (TVShell.ConnectionManager.WANState == ConnectState_Connected) {
+			//
+			// No timeout for Ethernet if not in wholesale guest mode
+			//
+			if (TVShell.ConnectionManager.WANProvider == BYOAEthernetProviderName &&
+				(TVShell.UserManager.CurrentUser && !IsGuestUser(TVShell.UserManager.CurrentUser) || 
+				!InWholesaleGuestModes())) {
+				return;
+			}
+
+			var MaxIdleTime;
+			var WarnUser = false;
+			var PersistentProperties = TVShell.Property("Persistent/");
+
+			if (TVShell.ConnectionManager.WANProvider == BYOAEthernetProviderName) {
+				// The service supplies this wholesale guest idle timeout value
+				MaxIdleTime = PersistentProperties("WholesaleGuestIdleTime");
+
+				if (!MaxIdleTime) {
+					TVShell.Message("OnWANIdleTimer(): Service has not set MaxIdleTime so defaulting to 30 minutes");
+					MaxIdleTime = 30*60;
+				}
+
+				var wmp = PanelManager.Item(mediapanel.name);
+				
+				if (wmp && wmp.State == PanelState_Showing) {
+					var MaxMediaPlayerIdleTime = PersistentProperties("WholesaleGuestMediaPlayerTime");
+
+					if (MaxMediaPlayerIdleTime) {
+						MaxIdleTime = MaxMediaPlayerIdleTime;
+					}
+
+					WarnUser = true;
+				}
+			} else {
+				//
+				// Ten minute timeout for modems, except for special cases
+				//
+				MaxIdleTime = 10 * 60;
+
+				//
+				// Check if the WMP panel is showing and increase the
+				// timeout if it is.
+				//
+				var wmp = PanelManager.Item(mediapanel.name);
+				if (wmp && wmp.State == PanelState_Showing) {
+					MaxIdleTime = 30 * 60;
+					WarnUser = true;
+				} else
+				if (IsProgressShowing())
+					MaxIdleTime = 20 * 60;
+			}
+
+			//
+			// If we get close to the limit, then put up an alert
+			//
+			if (WarnUser && TVShell.IdleTime > MaxIdleTime-30) {
+				if (!PanelManager.Item(idlewarnpanel.name)) {
+					AddPanel(PanelManager, idlewarnpanel);
+					PanelManager.Show(idlewarnpanel.name);
+					TVShell.ScreenSaver.UserActive(); // Wakeup screen saver
+				}
+			}
+
+			//
+			// If we are out of the warning zone, then make sure the warning is off
+			//
+			if (TVShell.IdleTime < MaxIdleTime-30)
+				RemovePanel(idlewarnpanel.name);
+
+			if (TVShell.IdleTime > MaxIdleTime) {
+				if (TVShell.ConnectionManager.WANProvider == BYOAEthernetProviderName) {
+					TVShell.ConnectionManager.WANAdapter.ErrorCode = ConnectError_ConnectedTimeOutWholesale;
+				} else {
+					TVShell.ConnectionManager.WANAdapter.ErrorCode = ConnectError_ConnectedTimeOut;
+				}
+
+				return;
+			}
+
+			// Re-check after five seconds
+			setTimeout(OnWANIdleTimer, 5000);
+		}
+	}
+
+	function StartDialingMusic(adapterType)
+	{
+		StopDialingMusic();
+
+		if (TVShell.ConnectionManager.WANAdapter.Type == AdapterType_Modem) {
+			// Play dialing followed by connecting sound loop, but only if we
+			// do not have audible dialing on. For BB, go straight to connecting loop.
+			if (TVShell.ConnectionManager.ModemAdapter.Settings.AudibleDialing)
+				return;
+
+			if (TVShell.ConnectionManager.ModemAdapter.Settings.AudibleDialingOverride == Override_On)
+				return;
+
+			DeviceControl.PlaySound("Dialing");
+			connectingSoundID = setTimeout("DeviceControl.PlaySound('Connecting', SND_ASYNC|SND_LOOP);", 3000);
+		}
+		else {
+			DeviceControl.PlaySound("Connecting", SND_ASYNC|SND_LOOP);
+		}
+	}
+
+	function StopDialingMusic()
+	{
+		clearTimeout(connectingSoundID);
+		connectingSoundID = 0;
+	}
+
+	function OnWANStateChange(ConnectCause, newState, newProgress)
+	{
+		var CurrentDate;
+		var Duration;
+		var PercentTCPErrors;
+		var Attempt;
+		var SuccessfulSignon;
+
+		//TVShell.Message("WANStateChange("+ConnectCause+", "+newState+", "+newProgress+"). PowerCause="+TVShell.PowerCause);
+				
+		SetProgressPercent(newProgress);
+		
+		switch (newState) {
+			case ConnectState_Disconnected:
+				var ErrorCode = TVShell.ConnectionManager.WANAdapter.ErrorCode;
+
+				CurrentDate = new Date();
+				Duration = WANConnectDateSet?CurrentDate.getTime() - WANConnectDateTime.getTime():0;
+				PercentTCPErrors = 0;  // Math.floor(TVShell.ConnectionManager.NetworkStatistics.TCPInErrors*100/TVShell.ConnectionManager.NetworkStatistics.TCPInSegs);
+
+				if (TVShell.ConnectionManager.ServiceState == Service_Authorized ||
+					TVShell.ConnectionManager.ServiceState == Service_GoToTarget ||
+					ErrorCode == ConnectError_Reconnect ||
+					ErrorCode == ConnectError_NoHomeNumber ||
+					ErrorCode == ConnectError_BadHomeNumber) {
+					SuccessfulSignon = "true";
+				} else {
+					SuccessfulSignon = "false";
+				}
+
+				if(TVShell.ConnectionManager.WANAdapter.Type == AdapterType_Modem) {
+					TVShell.Message("Stopping Accelenet");
+					TVShell.TerminateAcceleNet();
+
+					var DialedNumber = WANConnectPhoneNumber;
+
+					Attempt = new ConnectionAttempt(ConnectionType_Narrowband, CurrentDate.toString(),
+						ErrorCode, TVShell.ConnectionManager.WANAdapter.Settings.RASError,
+						GetWanTxRate(WANNarrowbandRates), GetWanRxRate(WANNarrowbandRates), PercentTCPErrors, 
+						SuccessfulSignon, Duration, DialedNumber);
+				} else {
+					Attempt = new ConnectionAttempt(ConnectionType_Broadband, CurrentDate.toString(),
+						ErrorCode, 0, GetWanTxRate(""), GetWanRxRate(""), PercentTCPErrors, 
+						SuccessfulSignon, Duration, " ");
+				}
+
+				AppendConnectionAttempt(Attempt);
+				WANConnectPhoneNumber = "";
+				WANNarrowbandRates = "";
+
+				if (ConnectError_SlowConnectionRedial != ErrorCode) {
+					// Turn the light off right away
+					DeviceControl.ConnectLED = LED_Off;
+					StopDialingMusic();
+					DeviceControl.PlaySound("Disconnect");
+				}
+
+				var PreviousServiceState = TVShell.ConnectionManager.ServiceState;
+
+				//TVShell.Message("Shell.html - WAN Disconnected, ErrorCode="+ErrorCode);
+
+				//
+				// Remember our last disconnect reason
+				//
+				TVShell.Property.Add("LastWANErrorCode", ErrorCode);
+
+				// Disconnect IM
+				LogoffIM();
+
+				if (ConnectError_SlowConnectionRedial != ErrorCode) {
+					// Turn off the proxy
+					TVShell.ConnectionManager.HTTPProxy.RemoveSettings();
+
+					// Just in case the progress panel is up...
+					SetProgressText(L_PROGRESS_DISCONNECTED);
+
+					// gives the user a chance to see the message before it's dismissed
+					setTimeout(HideProgressPanel, 500);
+				}
+
+				setTimeout(StopSlideShow, 50);
+
+				RemoveOnlinePanels(PanelManager);
+
+				TVShell.MeteringManager.Stop();
+
+				// Set windows.external.clientCaps property
+				if (mainPanel)
+					mainPanel.SetClientCapability("connectionType", "off");
+				
+				var popup = PanelManager.Item(popuppanel.name);
+				if(popup)
+				    popup.SetClientCapability("connectionType", "off");
+				
+				//
+				// Don't redirect or show an error if we are not powered on
+				//
+				if (!TVShell.IsOn)
+					return;
+
+				//
+				// If we connected automaticly, then ignore any errors
+				//
+				if (ConnectCause == "connection::nightly_login" || ConnectCause == "mail::check")
+					ErrorCode = ConnectError_NoError;
+
+				//
+				// Reboot the box if user is signed out and the last connection was due to autoupdate or anchor time nightly email check.
+				//
+				if(!TVShell.UserManager.CurrentUser || !TVShell.UserManager.CurrentUser.IsAuthorized)
+				{
+				    var AvailVirtualMemory = TVShell.SystemInfo.AvailVirtualMemory;
+			        var AvailPhysicalMemory = TVShell.SystemInfo.AvailPhysicalMemory;
+			        var UsageStr = "PowerCause=" + TVShell.PowerCause + "|ConnectCause=" + ConnectCause + "|PM=" + AvailPhysicalMemory + "|VM=" + AvailVirtualMemory;
+			         
+				    if(ConnectCause == "connection::nightly_login" && !IsWMPPlaying() && !g_WANCanceled) 
+				    {
+						var PersistentProperties = TVShell.Property("Persistent/");
+						PersistentProperties.Add("NightlyRebootUsageLog", UsageStr);
+						PersistentProperties.Save();
+
+				        setTimeout("TVShell.Reboot()", 5000);
+						return;
+
+				    }
+				    else if (ConnectCause == "mail::check")
+				    { 
+				        if(g_CurrentTask && g_CurrentTask.Once==0 )
+				        {
+				           if(!IsWMPPlaying()&& !g_WANCanceled)
+						   {
+								var PersistentProperties = TVShell.Property("Persistent/");
+								PersistentProperties.Add("NightlyRebootUsageLog", UsageStr);
+								PersistentProperties.Save();
+								setTimeout("TVShell.Reboot()", 5000);
+						   }
+						   return;
+				        }
+				        else
+				        {
+				            g_CurrentTask = null;
+				            if(TVShell.PowerCause == "AutoMailCheck")
+				            {
+				                TVShell.EventLog.Important("Powering off after AutoMailCheck");
+				                TVShell.PowerOff();
+					            return;
+				            }
+				        }
+				    }
+				}
+
+				if (ConnectError_SlowConnectionRedial == ErrorCode) {
+					TVShell.ConnectionManager.MSNIAManager.CurrentConnector.Phonebook.IncNextDialable();
+					TVShell.ConnectionManager.WANConnect(TVShell.ConnectionManager.WANCause);
+					return;
+				}
+
+				//
+				// See if this is a provider-specific error case
+				//
+				if (ProviderError(ErrorCode)) {
+					TVShell.ConnectionManager.ServiceState = Service_LoggedOff;
+					return;
+				}
+
+				//
+				// A Reconnect error means that the service is requesting that we hang up
+				//
+				if (ErrorCode == ConnectError_Reconnect) {
+					LogOff();
+					return;
+				}
+
+				//
+				// Handle the error differently depending on what our previous state was
+				//
+				switch (PreviousServiceState) {
+					case Service_ReSignIn:
+						//
+						// If we were connected, but not signed in, then ignore any errors
+						//
+						TVShell.ConnectionManager.ServiceState = Service_LoggedOff;
+						break;
+
+					case Service_Authorized:
+					case Service_GoToTarget:
+						//
+						// If we were signed in, then put up an error panel
+						//
+						var CurrentPanel = PanelManager.FocusedPanel;
+						if (CurrentPanel && CurrentPanel.Name != "main" )
+						{
+							// hide any sliding panel that currently has the focus
+							if ( CurrentPanel.Transition == SLIDING_PANEL_STYLE )
+								PanelManager.Hide(CurrentPanel.Name);
+						}
+
+						//
+						// The update code tries to handle all errors by itself
+						//
+						if (ConnectCause == "FullUpdate")
+							break;
+
+						//
+						// If there was no error, then just display the reconnect panel
+						// but log out if a wholesale guest user.
+						//
+						if (ErrorCode == ConnectError_ConnectedTimeOut ||
+							ErrorCode == ConnectError_ConnectedTimeOutWholesale ||
+							ErrorCode == ConnectError_NoError) {
+							StopDownLoading();
+
+							if (TVShell.UserManager.CurrentUser && IsGuestUser(TVShell.UserManager.CurrentUser) &&
+								InWholesaleGuestModes()) {
+								LogOff();
+							} else if(TVShell.ConnectionManager.WANProvider != BYOAEthernetProviderName || 
+								TVShell.UserManager.CurrentUser && TVShell.UserManager.CurrentUser.IsAuthorized) {
+								AddPanel(PanelManager, reconnectpanel);
+								PanelManager.Show(reconnectpanel.name);
+							}
+
+							break;
+						}
+
+						// Log out guest users when in a wholesale mode
+						// May want to display disconnect error rather than just logging out so
+						// I'm leaving this code separate from the above for now.  I need to consult
+						// with the wholesale guest PM.
+						if (TVShell.UserManager.CurrentUser && IsGuestUser(TVShell.UserManager.CurrentUser) &&
+							InWholesaleGuestModes()) {
+							LogOff();
+							break;
+						}
+
+						//
+						// Otherwise, they get the connect error panel
+						//
+						var Errortxt;
+
+						SetErrorMode(WANErrorMode);
+
+						// handling the Call Waiting dialog separately because it has a settings button
+						if (ErrorCode == ConnectError_IncomingCall) {
+							Errortxt = L_SHELL_DISCONNECTED_FROM+ServiceFullName+L_SHELL_DISCONNECTED_REASON1;
+
+							if (IsSignOnEnabled()) {
+								var ButtonChoice = PanelManager.CustomMessageBox( Errortxt, "",
+															L_SHELL_RECONNECT_BUTTON+";"+L_SHELL_GOTOSETTINGS_BUTTON+";"+L_SHELL_SIGNOUT_BUTTON
+															, 0, "", false,
+															MGX_ICON_WARNING, MGX_SIZE_LARGE );
+								if (ButtonChoice == 0) {
+									setTimeout( 'LoginToService("connection::reconnect");' , 10 );
+								} else if (ButtonChoice == 2) {
+									LogOff();
+								} else {
+									TVShell.URL = "msntv:/Settings/CallWaitingExtra.html?reconnect=true";
+								}
+							} else {
+								var ButtonChoice = PanelManager.CustomMessageBox( Errortxt, "",
+															L_SHELL_RECONNECT_BUTTON+";"+L_SHELL_GOTOSETTINGS_BUTTON, 0, "", false,
+															MGX_ICON_WARNING, MGX_SIZE_LARGE );
+								if (ButtonChoice == 0) {
+									setTimeout( 'LoginToService("connection::reconnect");' , 10 );
+								} else {
+									TVShell.URL = "msntv:/Settings/CallWaitingExtra.html";
+								}
+							}
+							break;
+						}
+
+						if (ErrorCode == ConnectError_ExtensionOffhook) {
+							Errortxt = L_SHELL_DISCONNECTED_FROM+ServiceFullName+L_SHELL_DISCONNECTED_REASON2 
+						} else {
+							Errortxt = L_SHELL_YOUR_TEXT + ProductShortName +
+									   L_SHELL_DISCONNECTFROM_TEXT + ServiceFullName +
+									   ".</P><P>" + ShortErrorMessage() + "</P>";
+						}
+
+						if (IsSignOnEnabled()) {
+							var ButtonChoice = PanelManager.CustomMessageBox( Errortxt, "",
+														L_SHELL_RECONNECT_BUTTON+";"+L_SHELL_SIGNOUT_BUTTON, 0, "", false,
+														MGX_ICON_WARNING, MGX_SIZE_LARGE );
+							if (ButtonChoice == 0) {
+								setTimeout( 'LoginToService("connection::reconnect");' , 10 );
+							} else {
+								LogOff();
+							}
+						} else {
+							var ButtonChoice = PanelManager.CustomMessageBox( Errortxt, "",
+														L_SHELL_RECONNECT_BUTTON, 0, "", false,
+														MGX_ICON_WARNING, MGX_SIZE_LARGE );
+							setTimeout( 'LoginToService("connection::reconnect");' , 10 );
+						}
+						break;
+
+					case Service_LoggedOff:
+						//
+						// If we haven't yet completed a connection, then show a full
+						// page error message (usually).
+						//
+						if (ErrorCode == ConnectError_ConnectedTimeOut) {
+							if (IsSignOnEnabled()) {
+								// timed out on the update offer so go back to the sign-on page
+								GotoSignOn();
+							}
+							break;
+						}
+
+						//
+						// If we disconnected with no error before we were authorized, that's
+						// probably because the user hit the stop button.
+						//
+						if (ErrorCode == ConnectError_NoError)
+							break;
+
+						//
+						// Present different errors depending on whether this is before or after
+						// registration
+						//
+						if (IsRegistered())
+							TVShell.URL = "msntv:/Connecting/ConnectError.html"+
+														"?ErrorMode=WAN&ErrorCode="+ErrorCode;
+						else
+							TVShell.URL = "msntv:/Registration/pages/ConnectError.html"+
+														"?ErrorMode=WAN&ErrorCode="+ErrorCode;
+						break;
+				}
+				break;
+
+			case ConnectState_Connecting:
+				{
+					var RemainingDialAttempts;
+					var RedialAttempt = false;
+
+					if (TVShell.ConnectionManager.WANProvider == MSNIAModemProviderName &&
+						typeof(RemainingDialAttempts = TVShell.Property.Item("RemainingMSNIADialAttempts")) == "string" &&
+						(RemainingDialAttempts = parseInt(RemainingDialAttempts)) >= 0) {
+						var MaxAttempts = MaxDialAttempts(TVShell.ConnectionManager.MSNIAManager.CurrentConnector.Phonebook);
+
+						if (MaxAttempts != RemainingDialAttempts+1) {
+							RedialAttempt = true;
+						}
+					}
+
+					DeviceControl.ConnectLED = LED_BlinkSlow;
+
+					if (TVShell.ConnectionManager.WANAdapter.Type == AdapterType_Modem) {
+						if (newProgress < 30) {
+							if (RedialAttempt) {
+								SetProgressText("Slow connection, dialing next number.");  /* Final text? */
+							} else {
+								SetProgressText(L_PROGRESS_PLEASE_WAIT_DIAL + ServiceShortName + ".");
+							}
+						} else {
+							SetProgressText(L_PROGRESS_PLEASE_WAIT_DIAL + GetDialedPhoneNumber() + ".");
+							if (30 == newProgress)  {
+								TVShell.Message("Number Dialed: " + GetDialedPhoneNumber());
+							}
+						}
+					} else if (ConnectCause=="mail::check") {
+						SetProgressText(L_PROGRESS_PLEASE_WAIT_CONNECT);
+					} else {
+						SetProgressText(L_PROGRESS_PLEASE_WAIT_SIGNIN + ServiceShortName + ".");
+					}
+
+					if (newProgress == 0) {
+						WANDuringConnectionAttempt = false;
+						WANConnectPhoneNumber = "";
+						WANNarrowbandRates = "";
+
+						if (DeviceControl.ClockSet) {
+							WANConnectDateTime = new Date();
+							WANConnectDateSet = true;
+						} else {
+							WANConnectDateSet = false;
+						}
+
+						if (ConnectCause != "FullUpdate" && !RedialAttempt) {
+							StartDialingMusic();
+						}
+					} else if (newProgress == 30 && TVShell.ConnectionManager.WANAdapter.Type == AdapterType_Modem) {
+						if (WANDuringConnectionAttempt) {
+							g_DisplayNarrowbandTips = false;
+
+							if (TVShell.ConnectionManager.WANProvider == MSNIAModemProviderName && !DialedPhoneNumberIsTollFree()) {
+								// Keep the number of remaining dial attempts accurate when the dialer redials on its own
+								DecrementRemainingDialAttempts();
+							}
+
+							// Retrying WANConnect() with the next phone number; log current attempt and set up for next attempt
+							CurrentDate = new Date();
+							Duration = WANConnectDateSet?CurrentDate.getTime() - WANConnectDateTime.getTime():0;
+							PercentTCPErrors = 0;  // Math.floor(TVShell.ConnectionManager.NetworkStatistics.TCPInErrors*100/TVShell.ConnectionManager.NetworkStatistics.TCPInSegs);
+							SuccessfulSignon = "false";
+
+							var DialedNumber = FormatDialedNumber(WANConnectPhoneNumber);
+
+							WANConnectPhoneNumber = GetDialedPhoneNumber();
+							Attempt = new ConnectionAttempt(ConnectionType_Narrowband, CurrentDate.toString(),
+								ConnectError_DialNextNumber, TVShell.ConnectionManager.WANAdapter.Settings.RASError,
+								GetWanTxRate(WANNarrowbandRates), GetWanRxRate(WANNarrowbandRates), PercentTCPErrors, 
+								SuccessfulSignon, Duration, DialedNumber);
+							AppendConnectionAttempt(Attempt);
+
+							if (DeviceControl.ClockSet) {
+								WANConnectDateTime = new Date();
+								WANConnectDateSet = true;
+							} else {
+								WANConnectDateSet = false;
+							}
+						} else {
+							WANDuringConnectionAttempt = true;
+							WANConnectPhoneNumber = GetDialedPhoneNumber();
+						}
+					}else if (newProgress == 50 && TVShell.ConnectionManager.WANAdapter.Type == AdapterType_Modem) {
+						WANNarrowbandRates = TVShell.ConnectionManager.WANAdapter.Settings.TX_RXRates;
+					}
+				}
+
+				break;
+
+			case ConnectState_Disconnecting:
+				SetProgressText(L_PROGRESS_PLEASE_WAIT + L_PROGRESS_DISCONNECTING);
+				break;
+				
+			case ConnectState_Connected:
+				//TVShell.Message("Shell.html - WAN Connected");
+				DeviceControl.ConnectLED = LED_On;
+
+				OnWANIdleTimer();
+
+				// Set windows.external property
+				var popup = PanelManager.Item(popuppanel.name);
+				if (mainPanel) {
+					
+					if(TVShell.ConnectionManager.WANAdapter.Type == AdapterType_Modem)
+					{
+						mainPanel.SetClientCapability("connectionType", "modem");
+						if(popup)
+				            popup.SetClientCapability("connectionType", "modem");
+					}
+					else
+					{
+						mainPanel.SetClientCapability("connectionType", "LAN");
+						if(popup)
+				            popup.SetClientCapability("connectionType", "LAN");
+					}
+
+
+					if (IsWebAccelerationAllowed())
+					{						
+						TVShell.Message("Starting Accelenet");
+						TVShell.TerminateAcceleNet(); // to make sure there is only one client acceleration process
+						TVShell.StartAcceleNet();
+
+					}
+
+				}
+
+				if (ConnectCause == "FullUpdate" || ConnectCause == "connection::nightly_login" || ConnectCause == "mail::check")
+					HideProgressPanel();
+				else
+					SetProgressText("Please wait while we sign you into " + ServiceShortName + ".");
+
+				if (TVShell.ConnectionManager.WANAdapter.Type == AdapterType_Modem) {
+					TVShell.Message("Modulation:" + TVShell.ConnectionManager.ModemAdapter.Settings.Modulation);
+					TVShell.Message("TX/RX Rates:" + TVShell.ConnectionManager.ModemAdapter.Settings.TX_RXRates);
+					TVShell.Message("Error Control:" + TVShell.ConnectionManager.ModemAdapter.Settings.ErrorControl);
+					TVShell.Message("Compression:" + TVShell.ConnectionManager.ModemAdapter.Settings.Compression);
+					//TVShell.EventLog.Usage("modem","rx=" + GetRXRate() + "|tx=" + GetTXRate() + "|phonenum=" + FormatDialedNumber(GetDialedPhoneNumber()));
+				}
+
+				// The proxy is disabled for dialup.  If the service wants us to have 
+				// a proxy for dialup it can turn it on later.
+				TVShell.ConnectionManager.HTTPProxy.ApplySettings();
+
+				if (ConnectCause == "FullUpdate" ) {
+					break;
+				}
+
+				if (TVShell.ConnectionManager.WANProvider == MSNIAModemProviderName && !DialedPhoneNumberIsTollFree()) {
+					var RemainingDialAttempts;
+
+					if ((RemainingDialAttempts = TVShell.Property.Item("RemainingMSNIADialAttempts")) && 
+						RemainingDialAttempts && RemainingDialAttempts != "" && RemainingDialAttempts >= 0) {
+						var BaudRateThresholdLow = GetNarrowbandBaudrateThresholdLow();
+						var BaudRateThresholdMedium = GetNarrowbandBaudrateThresholdMedium();
+						var BaudRateThresholdHigh = GetNarrowbandBaudrateThresholdHigh();
+						var GreatestRXRate = GreatestConnectedBaudRate(CurrentWANConnectionType());
+						var RXRate = GetWanRxRate(TVShell.ConnectionManager.ModemAdapter.Settings.TX_RXRates);
+
+						RXRate = parseInt(RXRate);
+
+						if (RemainingDialAttempts > 0 && (RXRate <= BaudRateThresholdLow ||
+							RXRate <= BaudRateThresholdMedium && RXRate < GreatestRXRate)) {
+							// set the new error code and return
+							TVShell.Property.Add("RemainingMSNIADialAttempts", RemainingDialAttempts - 1);
+							TVShell.ConnectionManager.WANAdapter.ErrorCode = ConnectError_SlowConnectionRedial;
+							g_DisplayNarrowbandTips = false;
+							return;
+						} else if (RXRate <= BaudRateThresholdHigh) {
+							g_DisplayNarrowbandTips = true;
+						}
+					}
+				}
+
+				StartServicePanel(ConnectCause, PanelManager);
+
+				if (ConnectCause == "connection::reconnect") {
+					var CurrentUser = TVShell.UserManager.CurrentUser;
+					if (CurrentUser != null && CurrentUser.IsAuthorized) {
+						var Messenger = CurrentUser.Messenger;
+						if (Messenger != null) {
+							var EMail= CurrentUser.EMail;
+							if ((Messenger.LocalState == MSTATE_OFFLINE || Messenger.LocalState == MSTATE_UNKNOWN) && Messenger.LogoffReason == MLOGOFFREASON_NETWORKDOWN && EMail != "") {
+								Messenger.LogoffReason = MLOGOFFREASON_UNKNOWN;
+								Messenger.Logon(EMail, Messenger.Services.PrimaryService);
+							}
+						}
+					}
+					StopDialingMusic();
+					DeviceControl.StopPlayingSound();
+				}
+				break;
+		}
+	}
+
+	g_WANCanceled=false;
+
+	function StopWANConnecting()
+	{
+		SetProgressStopFunction(null);
+
+		if (InWholesaleGuestMode() && !IsGuestUser(TVShell.UserManager.CurrentUser)) {
+			RemoveFeatures();
+		}
+
+		g_WANCanceled=true;
+
+		TVShell.ConnectionManager.WANDisconnect();
+	}
+	
+	//
+	// This is fired at the beginning of a WAN connection, before the connection is established
+	//
+	function OnWANConnect(ConnectCause)
+	{
+		//TVShell.Message("Shell::OnWANConnect("+ConnectCause+")");
+		g_WANCanceled=false;
+		g_DisplayNarrowbandTips = false;
+
+		// Take down any reconnect panel right away.  It doesn't hurt if it was not
+		// already up.
+		RemovePanel(reconnectpanel.name);
+
+		if ( ConnectCause == "FullUpdate" ) {
+			ShowProgressPanel();
+			SetProgressText(L_PROGRESS_PLEASE_WAIT + "Connecting...");
+		}
+
+		var WANState = TVShell.ConnectionManager.WANState;
+
+		if (WANState == ConnectState_Connected) {
+			if (!ServiceConnected()) {
+				//
+				// Re-enabled the proxy in case it was turned off
+				//
+				TVShell.ConnectionManager.HTTPProxy.ApplySettings();
+
+				if (ConnectCause=="mail::check") {
+					HideProgressPanel();
+				} else {
+					//
+					// We may have already been connected, but not authorized (e.g., we
+					// were on the switch user page).  If so, then we don't need to connect,
+					// but we may need to login again.
+					//
+					ShowProgressPanel();
+					SetProgressText(L_PROGRESS_PLEASE_WAIT_SIGNIN + ServiceShortName + ".");
+				}
+
+				StartServicePanel(ConnectCause, PanelManager);
+			}
+		} else {
+
+			// Verify that all of our settings are okay before we attempt to connect
+			VerifyProviderSetup();
+
+			if (FirstMSNIA_WANConnect()) {
+				InitializeRemainingDialAttempts(ConnectCause);
+			}
+
+			// If narrowband clear proxy settings if not reconnecting 
+			if (TVShell.ConnectionManager.WANAdapter.Type == AdapterType_Modem && 
+				!ServiceConnected()) {
+				ClearHTTPProxySettings();
+			}
+
+			// If we did not encounter an error while verifying the provider setup,
+			// then start the progress panel.
+			if (TVShell.ConnectionManager.WANAdapter.ErrorCode == ConnectError_NoError) {
+				ShowProgressPanel();
+				SetProgressStopFunction(StopWANConnecting);
+			}
+		}
+	}
+
+	function StopLANConnecting()
+	{
+		SetProgressStopFunction(null);
+		HideProgressPanel();
+		TVShell.ConnectionManager.LANDisconnect();
+	}
+	
+	//
+	// This is fired at the beginning of a LAN connection, before the connection is established
+	//
+	function OnLANConnect(ConnectCause)
+	{
+		// TVShell.Message("Shell::OnLANConnect("+ConnectCause+")");
+
+		switch (TVShell.ConnectionManager.LANState) {
+			case ConnectState_Disconnected:
+				//
+				// Verify that all of our settings are okay before we attempt to connect
+				//
+				VerifyLANProviderSetup();
+
+				//
+				// If we did not encounter an error while verifying the provider setup,
+				// and we have the right cause, then start the progress panel.
+				//
+				if (TVShell.ConnectionManager.LANAdapter.ErrorCode != ConnectError_NoError)
+					return;
+
+				// Fall through...
+
+			case ConnectState_Connecting:
+				if (ConnectCause == "LAN::ApplySettings" || ConnectCause == "LAN::Goto") {
+					SetProgressPercent(10);
+					SetProgressText(L_PROGRESS_PLEASE_WAIT_CONNECT_TO_HOMENETWORK);
+					SetProgressStopFunction(StopLANConnecting);
+					ShowProgressPanel();
+				}
+				break;
+
+			case ConnectState_Disconnecting:
+				break;
+
+			case ConnectState_Connected:
+				var entry = TVShell.ServiceList(ConnectCause);
+
+				if (entry) {
+					TVShell.ServiceList.Remove(ConnectCause);
+					if (entry.URL && mainPanel && mainPanel.Document) {
+						HideProgressPanel();
+						//TVShell.Message("OnLANConnect: main.Document.location="+entry.URL);
+						mainPanel.Document.location = entry.URL;
+					}
+				}
+
+				TVShell.ConnectionManager.LANCause = "LAN::Reconnect";
+				break;
+		}
+	}
+
+	//
+	// Timeout called whenever the LAN connection fails
+	//
+	function LANReconnect()
+	{
+		if (!TVShell.IsOn)
+			return;
+
+		if (TVShell.ConnectionManager.LANState == ConnectState_Disconnected) 
+			TVShell.ConnectionManager.LANConnect(TVShell.ConnectionManager.LANCause);
+	
+	}
+
+	function OnLANStateChange(ConnectCause, newState, newProgress)
+	{
+		//TVShell.Message("TVShell LANStateChange("+ConnectCause+", "+newState+", "+newProgress+")");
+		
+		if (ConnectCause == "LAN::ApplySettings" || ConnectCause == "LAN::Goto")
+			SetProgressPercent(newProgress);
+		
+		switch (newState) {
+			case ConnectState_Disconnected:
+				var ErrorCode = TVShell.ConnectionManager.LANAdapter.ErrorCode;
+
+				if (ErrorCode != ConnectError_NoLine) // Don't fill up log unnecessarily
+					//TVShell.Message("Shell.html - LAN Disconnected, ErrorCode="+ErrorCode);
+
+				if (ErrorCode == ConnectError_Reconnect) {
+					setTimeout("TVShell.ConnectionManager.LANConnect(\""+ConnectCause+"\");",  100);
+					return;
+				}
+
+				if (ConnectCause == "LAN::ApplySettings" || ConnectCause == "LAN::Goto") {
+					SetProgressText("Disconnected");
+
+					// gives the user a chance to see the message before it's dismissed
+					setTimeout(HideProgressPanel, 500);
+				}
+
+                // remove shares
+	            if (HomeNetworking) {   
+                    HomeNetworking.PowerOff();
+					HomeNetworking.StopUPNP();
+	            }
+
+				//
+				// Don't redirect or show an error if we are not powered on
+				//
+				if (!TVShell.IsOn)
+					return false;
+
+				//
+				// See if this is a provider-specific error case
+				//
+				//if (LANProviderError(ErrorCode))
+				//	return;
+
+				if (ErrorCode != ConnectError_NoError && ConnectCause == "LAN::ApplySettings") {
+
+					var Errortxt = L_SHELL_YOUR_TEXT + ProductShortName + L_SHELL_WAS_TEXT;
+					var LANShortName;
+
+					SetErrorMode(LANErrorMode);
+
+					if (TVShell.ConnectionManager.LANAdapter ==
+														TVShell.ConnectionManager.WirelessAdapter)
+						LANShortName = L_SHELL_LANSHORTNAME_WIRELESS;
+					else
+						LANShortName = L_SHELL_LANSHORTNAME_LOCAL;
+
+					Errortxt += L_SHELL_UNABLETOCONNECT_TEXT;
+
+					Errortxt += LANShortName;
+					Errortxt += ".</P><P>";
+					Errortxt += ShortErrorMessage() + "</P>";
+
+					var UserResponse = PanelManager.CustomMessageBox( Errortxt, "", L_SHELL_DONE_BUTTON,
+													0, "", false, MGX_ICON_WARNING, MGX_SIZE_LARGE);
+				}
+
+				if (ErrorCode != ConnectError_NoError && ConnectCause == "LAN::Goto") {
+					TVShell.URL = "msntv:/Connecting/ConnectError.html"+
+													"?ErrorMode=LAN&ErrorCode="+ErrorCode;
+				}
+
+				//
+				// If we get a LAN error, then silently try and reconnect after
+				// a few seconds
+				//
+				// enable this for normal testing. see change#36288
+//				if(flavor!="internal") // this line allows complete LAN disconnection for testing
+//				{
+					TVShell.ConnectionManager.LANCause = "LAN::Reconnect";
+					setTimeout("LANReconnect();", 5 * 1000);
+//				}
+
+				break;
+
+			case ConnectState_Connecting:
+				if (ConnectCause == "LAN::ApplySettings" || ConnectCause == "LAN::Goto")
+					SetProgressText(L_PROGRESS_PLEASE_WAIT_CONNECT_TO_HOMENETWORK);
+				break;
+
+			case ConnectState_Disconnecting:
+				if (ConnectCause == "LAN::ApplySettings" || ConnectCause == "LAN::Goto")
+					SetProgressText(L_PROGRESS_PLEASE_WAIT + L_PROGRESS_DISCONNECTING);
+				break;
+				
+			case ConnectState_Connected:
+				//TVShell.Message("Shell.html - LAN Connected ");
+
+				
+				if (ConnectCause == "LAN::ApplySettings") {
+					SetProgressText(L_PROGRESS_CONNECTED);
+					setTimeout("HideProgressPanel();", 2 * 1000);
+					TVShell.ConnectionManager.LANCause = "LAN::Reconnect";
+					
+					var Errortxt = L_SHELL_YOUR_TEXT + ProductShortName;
+					var LANShortName;
+
+					SetErrorMode(LANErrorMode);
+
+					if (TVShell.ConnectionManager.LANAdapter ==
+													TVShell.ConnectionManager.WirelessAdapter)
+						LANShortName = L_SHELL_LANSHORTNAME_WIRELESS;
+					else
+						LANShortName = L_SHELL_LANSHORTNAME_LOCAL;
+
+					Errortxt += L_SHELL_SUCCESS_CONNECT_TO_TEXT;
+
+					Errortxt += LANShortName;
+					Errortxt += ".</P><P>";
+
+					var UserResponse = PanelManager.CustomMessageBox( Errortxt, "", L_SHELL_DONE_BUTTON,
+												0, "", false, MGX_ICON_INFO, MGX_SIZE_LARGE);
+				}
+
+				var entry = TVShell.ServiceList(ConnectCause);
+
+				if (entry) {
+					TVShell.ServiceList.Remove(ConnectCause);
+					if (entry.URL && mainPanel && mainPanel.Document) {
+						HideProgressPanel();
+						TVShell.Message("OnLANState: setting main.Document.location to "+entry.URL);
+						mainPanel.Document.location = entry.URL;
+					}
+				}
+
+				TVShell.ConnectionManager.LANCause = "LAN::Reconnect";
+				HomeNetworking.StartUPNP();
+				break;
+		}
+		return false;
+	}
+
+	function OnSecretCode(secretCode)
+	{
+		TVShell.Message("Shell.html: processing SecretCode " + secretCode);
+
+		if (InWholesaleGuestModes()) {
+			if (55555 == secretCode && InOnlyGuestMode()) {
+				TVShell.Message("Shell.html: Secret code switching to Wholesale guest mode");
+				SwitchToWholesaleGuestMode();
+			} else {
+				TVShell.Message("Shell.html: ignoring SecretCode in \"OnlyGuest\" guest mode " + secretCode);
+			}
+		} else {
+			switch (secretCode) {
+				case 6145539:
+					TVShell.EventLog.CrashLogMgr.CrashTheSystem();
+					break;
+				case 32768:
+					TVShell.DeleteAllFilesAndReboot();
+					break;
+				case 411:
+				{
+					var entry = TVShell.BuiltinServiceList.Add("RunOnce");
+					entry.URL = "msntv:/Settings/System/System.html";
+					break;
+				}
+				case 93288:
+				{
+					var entry = TVShell.BuiltinServiceList.Add("RunOnce");
+					entry.URL = "msntv:/tvshell/Register.html";
+					TVShell.SetPagePatchURL( "msntv:/shell/blankppatch.xml");
+					break;
+				}
+				case 10000:
+				{
+					var entry = TVShell.BuiltinServiceList.Add("RunOnce");
+					entry.URL = "msntv:/Connecting/AboutToSynch.html?caller=updatecheck";
+					TVShell.PowerOn("AutoUpdate");
+					break;
+				}
+				case 10001:
+					var entry = TVShell.BuiltinServiceList.Add("RunOnce");
+					// this is first mail check at anchor time
+					g_CurrentTask = GetTask(TVShell.TaskScheduler,EMAILCHECK_TASK_CALLER_NAME);
+					entry.URL = "msntv:/Connecting/AboutToSynch.html?caller=mailcheck0";
+					TVShell.PowerOn("AutoMailCheck");
+					break;
+				case 10002:
+					var entry = TVShell.BuiltinServiceList.Add("RunOnce");
+					// this is mail check different than the one at anchor time
+					entry.URL = "msntv:/Connecting/AboutToSynch.html?caller=mailcheck1";
+					TVShell.PowerOn("AutoMailCheck");
+					break;
+
+				case 7264:
+					TVShell.Message("Shell.html: secret code clear tellyscript, clearing phone book of the LocalPOP connector");
+					ClearLocalPopPhoneBook();
+					break;			
+					
+					// advanced wireless settings
+				case 80211:
+				{
+					var entry = TVShell.BuiltinServiceList.Add("RunOnce");
+					entry.URL = "msntv:/Settings/Network/WirelessAdvanced.html";
+					break;
+				}
+					// bootrom secret codes		
+				case 2021:
+				case 8086:
+				{
+					var rom = new ActiveXObject("MSNTV.BootRom");
+
+					TVShell.Message("Shell.html: bootrom SecretCode " + secretCode);
+					rom.Read();
+					rom.SecretCode = secretCode;
+					rom.Flush();
+					
+					TVShell.Reboot();
+					break;
+				}
+					
+				case 3932397:
+				{
+					TVShell.Message("Start Update loop test");
+					
+					var service = TVShell.ServiceList("connection::login");
+					var syncURL = "sync-sg1.trusted.msntv.msn.com/syncserver/";
+					
+					if ( service != null && service.Description != "Production" ) {
+						syncURL = service.URL;
+						var httpPrefix = "http://";
+						var httpsPrefix = "https://";
+						var hwPrefix = "headwaiter.";
+						if ( syncURL.indexOf(httpPrefix) == 0 ) {
+							syncURL = syncURL.substring(httpPrefix.length,syncURL.length);
+						}
+						if ( syncURL.indexOf(httpsPrefix) == 0 ) {
+							syncURL = syncURL.substring(httpsPrefix.length,syncURL.length);
+						}
+						if ( syncURL.indexOf(hwPrefix) == 0 ) {
+							syncURL = syncURL.substring(hwPrefix.length,syncURL.length);
+						}
+						if ( syncURL.indexOf("/") > 0  ) {
+							syncURL = syncURL.substring(0,syncURL.indexOf("/"));
+						}
+						if ( syncURL == "trusted.msntv.msn.com" ) {
+							syncURL = "Sync-sg1." + syncURL;
+						} else {
+							syncURL = "Sync-" + syncURL;
+						}
+						syncURL += "/syncserver/";
+					}
+
+					TVShell.Message("Set update loop URL to " + syncURL);
+					var PersistentProperties = TVShell.Property("Persistent/");
+					PersistentProperties.Add("UpdateLoopTestMode", 1);
+					PersistentProperties.Add("UpdateLoopURL", syncURL);
+					PersistentProperties.Add("UpdateLoopIteration",0); 
+					PersistentProperties.Save();
+					break;
+				}
+
+				case 77437:
+				{
+					TVShell.Message("Spooky Dialing Options");
+
+					if (mainPanel && mainPanel.Document) {
+						var entry = TVShell.BuiltinServiceList.Add("RunOnce");
+						entry.URL = "msntv:/Settings/Spooky.html";
+					}
+
+					break;
+				}
+
+				default:
+					TVShell.Message("Shell.html: ignoring unknown SecretCode " + secretCode);
+					break;
+			}
+		}
+	}
+
+    function OnURLMONDialog(panelname, actionCode, info)
+	{
+       if (panelname=="main")
+	   {
+	       var urlmonuipanel = new Panel("URLMONUI", "msntv:/tvshell/urlmonui.htm",
+								  SYSTEM_PANEL_TYPE, POPUP_PANEL_STYLE,80,0,false);
+           urlmonuipanel.start = new CenteredRectangle(300,240);
+		   urlmonuipanel.modal = true;
+		   AddPanel(PanelManager, urlmonuipanel);
+	       PanelManager.Item("URLMONUI").UserStrData=info;
+	       PanelManager.Show("URLMONUI");
+	   }
+	     
+	}
+
+    function OnWININETDialog(panelname, hInternet,errorCode, errorData,info)
+	{
+	   var wininetuipanel = new Panel("WININETUI", "msntv:/tvshell/wininetui.htm",
+							  SYSTEM_PANEL_TYPE, POPUP_PANEL_STYLE,80,0,false);
+	   wininetuipanel.start = new CenteredRectangle(420, 310);
+	   wininetuipanel.modal = true;
+	   AddPanel(PanelManager, wininetuipanel);
+
+	   TVShell.Message("Internet handle is "+ hInternet);
+
+	   PanelManager.Item("WININETUI").UserStrData=errorCode.toString(10)+","+errorData.toString(10);
+	   PanelManager.Item("WININETUI").UserIntData=hInternet;
+
+	   PanelManager.Show("WININETUI");
+	}
+
+    function OnPrintCommand(panelname)
+	{
+   	   GotoPrint();
+  	}
+    
+	function OnNavigateError(panelName, statusCode, url)
+	{
+		//
+		// See ErrorCodes.js for possible statusCode values
+		//
+		TVShell.Message("NAVIGATION FAILED: OnNavigateError: Received error code " + statusCode + " from panel '" + panelName + "' for URL: " + url);
+
+		var errorHandled = false;
+		
+		if (TVShell.ConnectionManager.WANAdapter.Type == AdapterType_Modem) {
+			var proxy = TVShell.ConnectionManager.HTTPProxy;
+			if (proxy.Enabled) {
+				if (proxy.Verify() != ConnectError_NoError) {
+					ClearHTTPProxySettings();
+					errorHandled = true;
+					TVShell.ConnectionManager.WANAdapter.ErrorCode = ConnectError_ProxyServerNotFound;
+				}
+			}
+		}
+		
+		//
+		// If the service panel gets an error, then disconnect
+		//
+		if (panelName == servicepanel.name) {
+			var reason =
+				( statusCode <500 && statusCode >=400 ?
+				  ConnectError_LoginError : ConnectError_ServiceUnreachable );
+
+			TVShell.ConnectionManager.WANAdapter.ErrorCode = reason;
+			
+			if (reason == ConnectError_LoginError )
+				TVShell.Message( "Navigate statusCode indicates a Login Error" );
+			else
+				TVShell.Message( "Navigate statusCode indicates Service Unreachable" );
+		}
+
+		else if (!errorHandled && panelName == mainPanel.name && url.toLowerCase().indexOf("javascript:") != 0)
+		{
+			var pn = PanelManager.Item("gotopanel");
+			var str = "";
+			if ( pn != null ) str = pn.UserStrData;
+			if ( str != "AppendSuffix" )	// goto panel wants to act on this if str=="AppendSuffix"
+			{
+				mainPanel.UserIntData=statusCode;
+				mainPanel.UserStrData=url;
+				mainPanel.GotoURL("msntv:/TVShell/errors.htm");
+			}
+			OnNavigateComplete2(panelName, url, false);
+		}
+	}
+	
+	function OnDocumentComplete(panelName)
+	{
+		TVShell.Message("Shell.html: OnDocumentComplete("+panelName+")");
+
+		if (panelName == servicepanel.name) {
+
+			var panel = PanelManager.Item(panelName);
+			if (panel && panel.Document && panel.Document.body && panel.Document.body.innerText)
+			{	// A problem has occurred; show the page in the main panel
+				TVShell.Message("ServicePanel document has illegal content! Redirecting it to the main panel...");
+				var src = PanelManager.Item(servicepanel.name).HTMLSource;
+				mainPanel.Document.open();
+				mainPanel.Document.write(src);
+				mainPanel.Document.close();
+				PanelManager.Show("main");
+			}
+			panel = null;
+		}
+
+		if (panelName == "main")
+		{
+			ScaleNonMcePage(mainPanel);
+			LayoutStatusPanel();
+
+		    //Because of page transition,, we need to wait 
+			//for the transition to complete and capture thumbnail again.
+			//the delay must be greater than transition duration(250ms)
+			//Thus we end up capturing thumbnail twice.  
+			
+			window.setTimeout("mainPanel.CaptureThumbnail()", 500);
+	
+			var playHomeBrand = false;
+
+			// Login Messenger
+			if (TVShell.UserManager.CurrentUser)
+			{
+				var home = TVShell.UserManager.CurrentUser.ServiceList.Item("home::home");
+				var mainUrl = mainPanel.URL;
+				if (home != null && mainUrl.indexOf(home.URL) >= 0)
+				{
+					LoginIM();
+					playHomeBrand = true;
+				}
+			}
+
+			// Until HomePage plays sound, stop connecting sound here unless connecting.
+			// The connecting case occurs when the user selects "connect" from the Access Numbers page
+			// or from the Have You Moved page.
+			if (TVShell.ConnectionManager.WANState != ConnectState_Connecting) {
+				StopDialingMusic();
+				if ( !playedHomeBrandSound && playHomeBrand )
+				{
+					DeviceControl.PlaySound("MSN_Home_brand");
+					playedHomeBrandSound = true;
+				}
+				else
+					DeviceControl.StopPlayingSound();
+			}
+		}
+
+		if (panelName == "statusbar") {
+			var currentUser = TVShell.UserManager.CurrentUser;
+
+			if (currentUser && currentUser.IsAuthorized) {
+				currentUser.Favorites.changeSort("title","ascending");
+				AddUserAuthorizedPanels2(PanelManager);
+			}
+		}
+
+		if(g_ShowFavoritesPanel && panelName == "favoritespanel")
+		{
+		    g_ShowFavoritesPanel=false;
+			PanelManager.Show('favoritespanel');
+
+		}
+
+		if(panelName == "impanel")
+		{
+		    g_IMPanelCompleted = true;
+			LoginIM();
+		}
+	}
+
+	var Memory_Ok      = 0;
+	var Memory_Warning = 1;
+	var Memory_Low     = 2;
+	var Memory_Out     = 3;
+	var kMemory_Warning_Threshold = 2*1024*1024;
+	var kMemory_Low_Threshold = 1.5*1024 * 1024;
+	var g_MemoryState = Memory_Ok;
+
+	TVShell.EventLog.SystemMonitor.SetMemoryThresholds(kMemory_Warning_Threshold, kMemory_Low_Threshold); // Low, Critical
+
+	var kReducedMemoryThreshold = 5*1024*1024;
+
+
+	function OnMemoryStateChange(newstate)
+	{
+		
+		switch (newstate) {
+			case Memory_Ok:
+				if(g_MemoryState!=newstate)
+					TVShell.Message("Shell: OnMemoryStateChange -> ok");
+				break;
+			case Memory_Warning:
+				if(g_MemoryState!=newstate)
+				{
+					//TVShell.EventLog.Usage("Shell","MemoryState=warning|URL="+TVShell.PanelManager.Item("main").Document.URL);
+					TVShell.Message("Shell: OnMemoryStateChange -> warning");
+				}
+				if(g_MemoryState < newstate)
+					StopLoadingMain();
+				break;
+			case Memory_Low:
+				if(g_MemoryState!=newstate)
+				{
+					TVShell.Message("Shell: OnMemoryStateChange -> low");
+				}
+				if(TVShell.URL != "msntv:/Shell/OutOfMemory.html")
+				{
+					if(!TVShell.Utilities.IsMSNUrl(TVShell.URL) && !TVShell.Utilities.IsLocalUrl(TVShell.URL))
+					{	
+						var lowVM = TVShell.SystemInfo.AvailVirtualMemory < kMemory_Low_Threshold;
+						var lowPM = TVShell.SystemInfo.AvailPhysicalMemory < kMemory_Low_Threshold;
+
+						TVShell.EventLog.Usage("Shell","LowPM=" + lowPM + "|LowVM=" + lowVM + "|URL="+TVShell.PanelManager.Item("main").Document.URL);
+						
+						TVShell.PanelManager.Item("main").Document.location.replace("msntv:/Shell/OutOfMemory.html")
+					}
+				}
+				break;
+			case Memory_Out:
+				if(g_MemoryState!=newstate)
+				{
+					//TVShell.EventLog.Usage("Shell","MemoryState=out|URL="+TVShell.PanelManager.Item("main").Document.URL);
+					TVShell.Message("Shell: OnMemoryStateChange -> out");
+				}
+				break;
+		}
+		g_MemoryState = newstate;
+	}
+	
+	
+
+	function OnDeviceAdd(StorageDevice)
+	{
+		// Only react to mounted, removable, devices
+		if (!StorageDevice || !StorageDevice.Removable || !StorageDevice.Mounted || StorageDevice.IsNetwork)
+			return;
+
+		TVShell.Message("Shell.html: Device added: "+StorageDevice.VolumeName);
+		if (TVShell.Patcher.isUpdate(StorageDevice.VolumeName) && ValidXML("file:" + TVShell.Patcher.AutoUpdateXMLPath))
+		{
+			if (!TVShell.IsOn)
+				return;				
+			
+	  		InitPatch(StorageDevice);
+	  		return;
+		}
+
+		// Check for "Windows Connect Now" key
+		if (ReadSmartNetKey())
+			return;
+
+		// Must be registered for photos / music.
+		var CurrentUser = TVShell.UserManager.CurrentUser;
+		if (!IsSignOnEnabled() || InWholesaleGuestModes() && (!CurrentUser || !CurrentUser.IsAuthorized || IsGuestUser(CurrentUser))) {
+			return;
+		}
+
+		if (!TVShell.IsOn)
+			return;		
+					
+		TVShell.ScreenSaver.UserActive(); // Wakeup screen saver
+		
+		if (IsMainPanelOnPage("msntv:/Photo/MediaHelp.html"))
+			return;
+		if (IsMainPanelOnPage("msntv:/Photo/PhotoHome.html"))
+			return;
+		if (IsMainPanelOnPage("msntv:/Music/MusicHome.html"))
+			return;
+		if (IsMainPanelOnPage("msntv:/Video/VideoHome.html"))
+			return;
+		if (IsPhotoPickerPanelVisible())
+			return;
+
+		if (MediaCustomboxUp)
+		    return;
+
+        MediaCustomboxUp = true;
+        
+		if (IsMainPanelInWriteMail()) {
+			var message = L_SHELL_ONADDDEVICE_DEVICEINSERTED_MSG1;
+			PanelManager.CustomMessageBox(message, "", L_SHELL_OK_BUTTON, 0, "", true, MGX_ICON_INFO, 0);
+		}
+		else {
+			var message = L_SHELL_ONADDDEVICE_DEVICEINSERTED_MSG2
+			var retVal = PanelManager.CustomMessageBox(message, "", L_SHELL_PHOTOS_BUTTON+";"+L_SHELL_MUSIC_BUTTON+";"+L_SHELL_VIDEOS_BUTTON+";"+L_SHELL_DONE_BUTTON, 3, "", true, MGX_ICON_INFO, 0);
+			var target = null;
+			if (retVal==0)
+				target = L_SHELL_PHOTO_TEXT;
+			else if (retVal==1)
+				target = L_SHELL_MUSIC_TEXT;
+			else if (retVal==2)
+				target = L_SHELL_VIDEO_TEXT;
+
+			if (target) {
+				if (canAccessOfflineApp()) {
+					if (PanelManager.FocusedPanel && !PanelManager.FocusedPanel.Modal) {
+						PanelManager.Show("main");
+					}
+					mainPanel.GotoURL("msntv:/" + target + "/Viewer.html?location=0&StorageDeviceVN=" + escape(StorageDevice.VolumeName) + "&jump=true");
+                    setTimeout("MediaCustomboxUp = false", 1000);
+                    return;
+				}
+				else {
+					NotProvisionedMessageBox(target,"USB");
+				}
+			}
+		}
+        MediaCustomboxUp = false;
+	}
+
+	function OnDeviceRemove(StorageDevice)
+	{		
+		TVShell.Message("Shell.html: Device removed: "+StorageDevice.VolumeName);
+		
+		TVShell.PhotoManager.ClearThumbnailRequestQueue();
+		TVShell.PhotoManager.ClearImageResizeRequestQueue();
+		TVShell.PhotoManager.RemovePathFromImageList(StorageDevice.VolumeName+"\\");
+
+		// Only react to removable devices
+		if (!StorageDevice || !StorageDevice.Removable || !StorageDevice.Mounted || StorageDevice.IsNetwork)
+			return;
+
+		// show and alert message only if currently on writemail page
+		if (!IsMainPanelInWriteMail())
+			return;
+	
+		var message = L_SHELL_ONREMOVEDEVICE_MSG
+        PanelManager.CustomMessageBox(message,"",L_SHELL_OK_BUTTON,0,"", false, 0x30, 1);
+	}
+
+	function GotoTargetPage()
+	{
+		TVShell.BuiltinServiceList.Remove("home::target");
+		var entry = TVShell.ActiveServiceList.Item("home::target");
+		if (entry) {
+			var url = entry.URL;
+			var i = url.indexOf('?');
+			if (i > -1) {
+				var serviceName = url.substr(0,i);
+				var e = TVShell.ActiveServiceList.Item(serviceName)
+				if (e) {
+					var parameter = url.substr(i+1);
+					mainPanel.GotoURL(e.URL + "?" + parameter);
+				}
+				else
+					mainPanel.GotoURL(TVShell.ActiveServiceList.Item('home::home').URL);
+			}
+			else {
+				var e = TVShell.ActiveServiceList.Item(url)
+				if (e)
+					mainPanel.GotoURL(e.URL);
+				else
+					mainPanel.GotoURL(TVShell.ActiveServiceList.Item('home::home').URL);
+			}
+			TVShell.ActiveServiceList.Remove("home::target");
+		}
+		else
+			mainPanel.GotoURL(TVShell.ActiveServiceList.Item('home::home').URL);
+		
+		if (entry && entry.URL != "home::home") {
+			mainPanel.ClearTravelLog("msntv:/Settings/");
+			mainPanel.ClearTravelLog("msntv:/Help/");
+			mainPanel.ClearTravelLog("msntv:/tvshell/login.html");
+			mainPanel.ClearTravelLog("msntv:/tvshell/ForgotPassword.html");
+		}
+		else {
+			mainPanel.ClearTravelLog();
+			mainPanel.NoBackToMe = true;
+		}
+	}
+	
+	function IsMainPanelInMusicRadio()
+	{	
+		var currentURL = mainPanel.URL;	
+		currentURL = currentURL.toLowerCase();	
+		var retVal = (currentURL.indexOf("msntv:/music/radio.html") == 0) ? true : false;
+		return retVal;
+	}
+	
+	function IsPhotoViewerZoomPanelVisible()
+	{
+		return (IsMainPanelInPhotoViewer() && (mainPanel.Document.parentWindow.zoomDivOpen == true))? true : false;
+	}
+	
+	function IsPhotoPickerPanelVisible()
+	{
+		var photoPickerPanel = PanelManager.Item("PhotoPickerPanel");						
+		if ( photoPickerPanel && photoPickerPanel.State == 0)
+			return true;
+		else
+			return false;
+	}
+
+	function IsMainPanelInMSNVideoAndShouldBypassGoBack()
+	{	
+		var CurrentUser = TVShell.UserManager.CurrentUser;
+		if (CurrentUser) {
+			var MSNVideoEntry = CurrentUser.ServiceList.Item("home::videoplus");
+			if (MSNVideoEntry && MSNVideoEntry.URL) {
+				var MSNVideoPath = MSNVideoEntry.URL;
+				var currentURL = mainPanel.URL.toLowerCase();
+					
+				MSNVideoPath = MSNVideoPath.substring(0, MSNVideoPath.lastIndexOf("/")).toLowerCase();
+				if (currentURL.indexOf(MSNVideoPath) == 0) {
+					if (typeof(mainPanel.Document.GoBack) != "undefined" && mainPanel.Document.GoBack() == true)
+						return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	// check for a diploma before showing this panel, return true if a diploma is displayed
+	function diplomaDisplayed( panelName , message )
+	{
+		var CurrentUser = TVShell.UserManager.CurrentUser;
+		if ( CurrentUser == null ) return false;
+		if ( panelName == "impanel" )
+		{
+			if ( ( CurrentUser.DiplomaSettings & MDIPLOMA_IM ) == 0 )
+			{
+				CurrentUser.DiplomaSettings = CurrentUser.DiplomaSettings | MDIPLOMA_IM;
+				var url = GetPaneHelpURL( PH_diploma , 'MSNTV_DIPLOMA_Messenger.htm' , null );
+				PanelManager.Show('main');
+				PanelManager.Item('main').GotoURL(url);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	function OnAfterHide(name)
+	{
+		if (name == g_HidingPanelName && g_PendingURL!=null) {
+			TVShell.URL = g_PendingURL;
+			g_HidingPanelName = null;
+			g_PendingURL = null;
+		}
+		setTimeout(LayoutStatusPanel,1);
+
+		if (name == "favoritespanel") {
+			if (g_SwitchFavoritesContent) {
+				g_SwitchFavoritesContent=false;
+				PanelManager.Item('favoritespanel').GotoURL(g_FavoritesContentURL)
+				g_ShowFavoritesPanel=true;	
+			}
+		}
+	}
+	
+	function OnAfterPanelCreated(name)
+	{
+		//TVShell.Message("Panel \""+name+"\" is created.")		
+		
+		if (name == "favoritespanel") 
+		{
+		    // turn page transition 
+
+			var panelobj=PanelManager.Item(name);
+			panelobj.PageTransitionOn = false;
+			panelobj.PageTransition="progid:DXImageTransform.Microsoft.Fade(duration=0.100)"; 
+		}
+	}
+
+    function HandleZoomUp()
+    {
+        var content = L_SHELL_ZOOMUP_MSG;
+		DiplomaCustomMessageBox(0,MDIPLOMA_TEXTRESIZE,content,"",L_SHELL_OK_BUTTON,0,"", true, MGX_ICON_INFO);
+
+		if (PanelManager.ZoomUp()) 
+			DeviceControl.PlaySound("IncreaseTextSize"); 
+		else 
+			DeviceControl.PlaySound("Page_Boundary"); 
+		return;
+    }
+    
+    function HandleZoomDown()
+    {
+        var content = L_SHELL_ZOOMDOWN_MSG;
+		DiplomaCustomMessageBox(0,MDIPLOMA_TEXTRESIZE,content,"",L_SHELL_OK_BUTTON,0,"", true, MGX_ICON_INFO);
+
+		if (PanelManager.ZoomDown())
+			DeviceControl.PlaySound("DecreaseTextSize"); 
+		else 
+			DeviceControl.PlaySound("Page_Boundary"); 
+		return;
+    }
+    
+	function RelayoutPanel(name)
+	{
+	    var panel = PanelManager.Item(name);
+		if(panel)
+		 panel.Relayout();
+	}
+
+	var rootFavURL, addFavURL;
+	function OnServiceListKeyDown(ServiceEntry, result)
+	{
+		//TVShell.Message("OnServiceListKeyDown: "+ServiceEntry.name);		
+
+		// Check offline provisioning
+		if (ServiceEntry.ProvisioningRequired == true) {
+			if (!IsSignOnEnabled()) {
+				return;
+			}
+			if (canAccessOfflineApp() == false) {
+				NotProvisionedMessageBox(ServiceEntry.URL,"");
+				return;
+			}
+		}
+		
+		// If some event handler before us has decided what to do, then we ignore it
+		if (result.Value != Result_Default)
+			return;
+
+		//
+		// Check if the current panel is marked "modal", in which case we leave it alone.
+		//
+		var CurrentPanel = PanelManager.FocusedPanel;
+		var Modal = false;
+
+		if (CurrentPanel && CurrentPanel.Modal)
+			Modal = true;
+		
+		if (!Modal) {
+			//
+			// If the Service Entry has a panel, then show it
+			//
+
+			if (ServiceEntry.Panel != "") {
+				if (ServiceEntry.Panel == "favoritespanel") {
+					var favURL = PanelManager.Item('favoritespanel').URL;
+					rootFavURL = favURL.substr(0, (favURL.indexOf("?") > 0)? favURL.indexOf("?") : favURL.length);
+					addFavURL = rootFavURL + "?action=AddFavorite";
+					if ( favURL.toLowerCase().indexOf("sync") > 0 ){
+						if ( CurrentPanel.Name != "favoritespanel"  )
+							PanelManager.Show('favoritespanel');
+						else
+							PanelManager.TogglePanel(ServiceEntry.Panel, ServiceEntry.Message);
+					} else {
+						if (ServiceEntry.Message == "add") {
+							if (CurrentPanel.Name == "favoritespanel") {
+								PanelManager.Hide("favoritespanel"); // dimiss favorites panel first
+								if (favURL != addFavURL) {// if current favURL is not addFavURL
+									g_SwitchFavoritesContent=true;
+									g_FavoritesContentURL=addFavURL;
+								}
+							} else {
+								PanelManager.Item('favoritespanel').GotoURL(addFavURL); // set addFavURL to favorits Panel
+								g_ShowFavoritesPanel=true;// pop up favorites panel
+							}
+						} else {
+							if (CurrentPanel.Name == "favoritespanel" && favURL == addFavURL) {
+								PanelManager.Hide("favoritespanel"); // dimiss add favorite panel first
+								g_SwitchFavoritesContent=true;
+								g_FavoritesContentURL=rootFavURL;							
+							} else if (CurrentPanel.Name != "favoritespanel" && favURL != rootFavURL) {
+								PanelManager.Item('favoritespanel').GotoURL(rootFavURL);// set rootFavURL to favorits Panel
+								g_ShowFavoritesPanel=true;// pop up favorites panel
+							} else {
+								PanelManager.TogglePanel(ServiceEntry.Panel, ServiceEntry.Message);
+							}
+						}
+					}
+				}
+				else {
+					if ( !diplomaDisplayed( ServiceEntry.Panel, ServiceEntry.Message ) )
+						PanelManager.TogglePanel(ServiceEntry.Panel, ServiceEntry.Message);
+				}
+				return;
+			}
+
+			if (ServiceEntry.Name=="browser::print") {
+			  TVShell.Message("about to toggle panel");
+			  if (PanelManager.FocusedPanel.Name==printsettingspanel.name)
+				PanelManager.TogglePanel(printsettingspanel.name, "");
+			  else if (IsMainPanelInDocViewer() && !mainPanel.Document.parentWindow.isDocumentLoaded)
+			  {
+				TVShell.Message("document not loaded ");
+				TVShell.DeviceControl.PlaySound("Page_Boundary");
+				return;
+			  } 
+			  else if (IsPhotoViewerZoomPanelVisible())
+			  {
+				  // ignore the print key if the Photo zoom window is displayed
+				  TVShell.DeviceControl.PlaySound("Block");
+				  return;
+			  }
+			  else if (IsMainPanelInPhotoViewer() && NoPhotoSelected())
+			  {
+
+				  // if there is already another modal dialog on, simply return and not show any 
+				   // message box
+				  if (PanelManager.ModalDlgOn)
+					  return;
+
+				  var content="<p>";
+				  content+=L_SHELL_NOPHOTOSELECTION_MSG;
+ 				  PanelManager.CustomMessageBox(content,L_SHELL_NOPHOTOSELECTION_TITLE,L_SHELL_OK_BUTTON,0,"", true)
+				  return;
+			  }			  
+			  else if (PrinterAvailable())
+			  {
+			  	if (IsMainPanelInPhotoViewer() && PanelManager.FocusedPanel.Name=="main")
+				  mainPanel.Document.ClickPrintButton();
+				else
+				  PanelManager.TogglePanel(printsettingspanel.name, "");
+			  }
+			  else { 
+				  // if there is already another modal dialog on, simply return and not show any 
+				   // message box
+				  if (PanelManager.ModalDlgOn)
+					  return;
+
+				DisplayCompatiblePrinterDialog();
+			  }
+			  
+			  return;
+			}
+			//
+			// If the entry has a URL, then send the main panel to it.
+			//
+			if (ServiceEntry.URL != "") {
+				PanelManager.Show("main");
+				if (CurrentPanel == mainPanel || CurrentPanel.Name == popuppanel.name) {
+					TVShell.URL = ServiceEntry.URL;
+				}
+				else {
+					g_HidingPanelName  = CurrentPanel.Name; 
+					g_PendingURL	   = ServiceEntry.URL;
+				}
+				return;
+			}
+
+			if ( ServiceEntry.name == "offline::tempMail"  && IsSignOnEnabled())
+			{
+				// goto sign-in and then mail
+				GotoTarget( "mail::listmail", null , true );
+				return;
+			}
+
+			if ( ServiceEntry.name == "offline::tempSearch" && IsSignOnEnabled())
+			{
+				// goto sign-in and then search
+				GotoTarget( "search::main", null , true );
+				return;
+			}
+			
+			//
+			// Handle back/esc key entry in following priority order
+			//		1. Dismiss Alert panel if visible
+			//		2. Go back one page in focused panel if back key.
+			//		3. Hide focused panel if not "main".
+			//
+			if (ServiceEntry.name == "browser::back" || ServiceEntry.name == "browser::esc") {
+				var	alertPanel = PanelManager.Item("alert");
+
+				if (alertPanel && alertPanel.State == PanelState_Showing) {
+					PanelManager.Hide("alert");
+				}
+				else {
+					var wentBack = false;
+					var byPass = false;
+
+					if ( CurrentPanel && CurrentPanel.Name == "main" )
+					{
+
+						var CurrentPanelURL = CurrentPanel.URL;						
+						
+						if ( IsMainPanelInDocViewer() || 
+							 IsMainPanelInMSNVideoAndShouldBypassGoBack() ||
+							 IsPhotoViewerZoomPanelVisible() ||
+							 IsMainPanelInMusicRadio()
+							)
+							{
+								byPass = true;
+							}
+
+						else if(TVShell.Utilities.IsMSNTVUrl(CurrentPanelURL) || TVShell.Utilities.IsLocalUrl(CurrentPanelURL))
+						{
+							try 
+							{
+								if(CurrentPanel.Document.parentWindow.MSNTVHandleBackKey())
+								   byPass=true;
+							} 
+							catch (ex) 
+							{
+
+							}
+						}
+
+					}
+					else if (CurrentPanel && CurrentPanel.Name == popuppanel.name) {
+						// For popups, back always hides.
+						byPass = true;
+					}
+
+					if ( !byPass )
+					{
+						wentBack = ServiceEntry.name == "browser::back" ? PanelManager.GoBack() : false;
+					}
+
+					if (wentBack) {
+						DeviceControl.PlaySound("Back");
+					}
+					else if (CurrentPanel && CurrentPanel.Name != "main" && CurrentPanel.Name != "mediapanel" && 
+						     CurrentPanel.Name != "favoritespanel" ) {
+						PanelManager.Hide(CurrentPanel.Name);
+					}
+					else if (ServiceEntry.name == "browser::esc" && 
+							 TVShell.BuiltinServiceList.Item("browser::expandselectionend") &&
+							 CurrentPanel == mainPanel) {
+						var document = mainPanel.Document;
+						var activeElement = document.activeElement;
+						var selection = document.selection;
+						
+						while (selection.type != "Text" && activeElement.tagName.indexOf("FRAME") != -1) {
+							document = TVShell.PanelManager.GetChildFrameDoc(document, activeElement);
+							activeElement = document.activeElement;
+							selection = document.selection;
+						}
+			
+						if ((!activeElement || !activeElement.isContentEditable) &&
+							selection && selection.type == "Text") {
+							selection.empty();
+						}
+					}						
+				}
+				return;
+			}					
+
+			if (ServiceEntry.name == "browser::showpopup") {
+				if (lastSuppressedPopupURL != null && lastSuppressedPopupURL != "") {
+					mainPanel.GotoURL(lastSuppressedPopupURL);
+					return;
+				}
+			}
+
+			//   bring up the find panel when CTRL+f is pressed
+			if ( ServiceEntry.name == "Find" && !IsMainPanelInDocViewer()){
+				PanelManager.Show('find');
+				return;
+			}
+			
+			//
+			// If the entry is a favorite's shortcut, just return. Favorites.html will process this event 
+			//
+			if (ServiceEntry.name.substr(0,ServiceEntry.name.length-1) == "favorite::shortcut") {
+				return;
+			}
+
+			//
+			// Layout mode switching.
+			//
+			
+			if (ServiceEntry.name == "TVLensMode") {
+				TVShell.Message("TVLensMode");
+				if ( TVShell.UserManager.CurrentUser == null ||  ! TVShell.UserManager.CurrentUser.IsAuthorized){
+					TVShell.Message("     Ignoring page resize when user is not login");
+					return;
+				}
+				
+				if (CurrentPanel.name == "mediapanel")
+					return;
+					
+				if (IsMainPanelInDocViewer())
+				{
+					var msg = L_SHELL_DOCVIEWER_LAYOUTCHANGE_MSG;
+					PanelManager.CustomMessageBox(msg,"",L_SHELL_OK_BUTTON,0,"", true);
+					return;
+				}
+
+				var content = L_SHELL_HTML_LAYOUTCHANGE_MSG;
+				DiplomaCustomMessageBox(0,MDIPLOMA_PAGESIZE,content,"",L_SHELL_OK_BUTTON,0,"", true, MGX_ICON_PAGERESIZE);
+
+				var mode = PanelManager.LayoutMode;
+				if (mode == 0)	// currently in wide mode
+					DeviceControl.PlaySound("PageResizeForceFit"); 
+				else
+					DeviceControl.PlaySound("PageResizeWideView");
+
+				PanelManager.LayoutMode = (mode > 0) ? 0 : 1;	
+				setTimeout("PanelManager.Item('main').Relayout();", 1);	// allow SettingsChange event to propogate;
+				
+				for (i = PanelManager.Count-1; i >= 0 ; i--)
+				{
+					var panel = PanelManager.Item(i);
+					if (panel.Name.indexOf("popup")==0)
+						setTimeout("RelayoutPanel(\""+panel.Name+"\");", 10);
+				}
+				return;
+			}
+
+			if (ServiceEntry.name == "TVLensModeTest") {
+				var mode = PanelManager.LayoutMode;
+				var modeNames = new Array();
+				modeNames[0] = L_SHELL_LAYOUT_NAME_NORMAL;
+				modeNames[1] = L_SHELL_LAYOUT_NAME_FORCE_FIT1;
+				modeNames[2] = L_SHELL_LAYOUT_NAME_FORCE_FIT2;
+				var sound = "PageResizeWideView";
+				var animation = "msntv:/Panels/Images/PageResizeOut.gif";
+					
+				if (++mode > 2) {
+					mode = 0;
+				}
+
+				if (mode == 1) {
+					sound = "PageResizeForceFit";
+					animation = "msntv:/Panels/Images/PageResizeIn.gif";
+				}
+
+				PanelManager.LayoutMode = mode;
+			    PanelManager.AnimationMessageBox(L_SHELL_LAYOUT_IS_TEXT + modeNames[mode] + ".", animation, sound);
+				setTimeout("PanelManager.Item('main').Relayout();", 1); // allow SettingsChange event to propogate;
+
+
+				for (i = PanelManager.Count-1; i >= 0 ; i--)
+				{
+					var panel = PanelManager.Item(i);
+					if (panel.Name.indexOf("popup")==0)
+						setTimeout("RelayoutPanel(\""+panel.Name+"\");", 10);
+				}
+
+				return;
+			}
+
+			if (ServiceEntry.name == "ZoomUp") 
+			{
+				TVShell.Message("ZoomUp");
+				
+				var FocusedPanel = PanelManager.FocusedPanel;
+			    if (!FocusedPanel)
+			        return;
+			    
+			    var FocusedPanelURL = FocusedPanel.URL;
+			    if(TVShell.Utilities.IsMSNTVUrl(FocusedPanelURL) || TVShell.Utilities.IsLocalUrl(FocusedPanelURL))
+			    {
+			        try 
+			        {
+                        FocusedPanel.Document.parentWindow.MSNTVZoomUp();
+                        return;
+                    } 
+                    catch (ex) 
+                    {
+                        HandleZoomUp();
+					    return;
+					}
+			    }
+			    else
+			    {
+					HandleZoomUp();
+					return;
+				}
+			}
+			if (ServiceEntry.name == "ZoomDown") {
+				TVShell.Message("ZoomDown");
+				var FocusedPanel = PanelManager.FocusedPanel;
+			    if (!FocusedPanel)
+			        return;
+			    
+			    var FocusedPanelURL = FocusedPanel.URL;
+			    if(TVShell.Utilities.IsMSNTVUrl(FocusedPanelURL) || TVShell.Utilities.IsLocalUrl(FocusedPanelURL))
+			    {
+			        try 
+			        {
+                        FocusedPanel.Document.parentWindow.MSNTVZoomDown();
+                        return;
+                    } 
+                    catch (ex) 
+                    {
+                        HandleZoomDown();
+					    return;
+					}
+			    }
+			    else
+			    {
+					HandleZoomDown();
+					return;
+				}
+			}
+
+			if (ServiceEntry.name == "browser::print") {
+				GotoPrint();
+				return;
+			}
+			
+			if (ServiceEntry.name == "browser::expandselectionstart" || ServiceEntry.name == "browser::expandselectionend")
+			{
+				if (CurrentPanel != mainPanel) {
+					result.Value = Result_Negative;
+					return;
+				}
+
+				var expandStart = (ServiceEntry.name == "browser::expandselectionstart");
+				var document = mainPanel.Document;
+				var activeElement = document.activeElement;
+				var selection = document.selection;
+				var selectedRange;
+				
+				while (selection.type != "Text" && activeElement.tagName.indexOf("FRAME") != -1) {
+			        document = PanelManager.GetChildFrameDoc(document, activeElement);
+					activeElement = document.activeElement;
+					selection = document.selection;
+				}
+			
+				if (activeElement && (activeElement.isContentEditable || activeElement.tagName == "OBJECT" || activeElement.tagName == "EMBED")) {
+					result.Value = Result_Negative;
+					return;
+				}
+				
+				if (selection.type == "Text") {
+					selectedRange = selection.createRange();
+					var startRange = selectedRange.duplicate();
+					var numWords = 1;
+					do {
+						if (expandStart) {
+							selectedRange.moveStart("word", -numWords);
+						}
+						else {
+							selectedRange.moveEnd("word", numWords);
+						}
+					} while (selectedRange.isEqual(startRange) && numWords++ < 5);
+				}
+				else if (activeElement) {
+					if (!activeElement.parentTextEdit) {
+						return;
+					}
+					selectedRange = activeElement.parentTextEdit.createTextRange();
+					selectedRange.moveToElementText(activeElement);
+				}
+				
+				selectedRange.select();
+				activeElement.setActive();
+				return;
+			}
+			
+			if (ServiceEntry.name == "CaptureScreen") {
+				var fileName = window.prompt(L_SHELL_SCREENSHOT_PROMPT_MSG, L_SHELL_SCREENSHOT_PROMPT_TITLE);
+
+				if (fileName != "") {
+					// Done as a timeout to allow screen updated after prompt panel is closed.
+					setTimeout("TVShell.ThumbnailManager.CaptureScreenshot(null, '\\\\Hard Disk\\\\" + fileName + "');", 10);
+				}
+				return;
+			}
+
+			if (ServiceEntry.name == "ScreenSaver") {
+				TVShell.Message("ScreenSaver");
+				var ScreenSaverFileName = TVShell.PhotoManager.DevicePhotoPath;
+				ScreenSaverFileName+="ScreenSaver.txt";
+				var dstURL = "msntv:/Photo/SlideShow.html?startIndex=0&location=1&mode=ScreenSaver&tempAllFileList=" + ScreenSaverFileName;
+				TVShell.URL = dstURL;
+				return;
+			}
+			if (ServiceEntry.name == "Photo::grabber")
+			{
+				var mainpanel=PanelManager.Item("main");
+				if(mainpanel && mainpanel.Document.URL.indexOf("msntv:/")!=0)
+				{
+					ViewImages()
+					return;
+				}
+			}
+		}
+
+		// Bad news, either the current panel is modal, or the panel doesn't exist,
+		// or the URL is empty.  Bonk.
+		DeviceControl.PlaySound("Error");
+	}
+
+
+	function ViewImages()
+	{
+		var mainpanel=PanelManager.Item("main");
+		var images=FindImages(mainpanel.Document);
+
+		if(images && images.length>0)
+		{
+			var images2 = new Array();
+			images2[0]=images[0];
+
+
+			// remove duplicate urls
+			for(i=1;i<images.length;i++)
+			{
+				var duplicate = false;
+				for(j=0;j<images2.length;j++)
+				{
+					if(images[i]==images2[j])
+					{
+						duplicate=true;
+						break;
+					}
+				}
+				if(!duplicate)
+					images2[images2.length]=images[i];
+			}
+
+			var data=""
+			for(i=0;i<images2.length;i++)
+			{
+			   if(images2[i])
+					data+=images2[i]+"\n";
+			}
+			var ContentSync	= new ActiveXObject("MSNTV.ContentSync");
+			var ImageListFilePath = ContentSync.UserDataPath+"\\Photo\\Settings\\PageImageList.txt";
+			TVShell.Utilities.CreateTextFile(ImageListFilePath, data);
+			PanelManager.Item("main").GotoURL("msntv:/photo/Viewer.html?FromImageListFile=true");
+			PanelManager.Show("main");
+		}
+
+	}
+
+	function FindImages(root)
+	{
+		var images=root.all.tags("img");
+		var urls= new Array();
+
+		if(images && images.length)
+		{
+			var j=0;
+			for(i=0;i<images.length;i++)
+			{
+			  if(images[i] && images[i].src)
+			  {
+				urls[j]=images[i].src;
+				j++;
+			  }
+			}
+		}
+
+		if(root.frames && root.frames.length)
+		{
+			 var framecount=root.frames.length;
+			 var framedoc;
+			 var imgurlsinframe;
+			 var i;
+			 			 
+			 for(i=0;i< framecount;i++)
+			 {
+			   framedoc=PanelManager.GetChildFrameDoc(root,i);
+			   if(framedoc)
+			   {
+			      
+				  imgurlsinframe=FindImages(framedoc);
+				  if(imgurlsinframe && imgurlsinframe.length>0)
+				  {
+		    		urls=urls.concat(imgurlsinframe);
+				  }
+			   }
+			 }
+		}
+		return urls;
+	}
+
+
+	function UpdateServiceHours()
+	{
+		var rom = new ActiveXObject("MSNTV.BootRom");
+		rom.UpdateServiceHours();
+	}
+
+	
+	function OnTimeout(taskScheduler, taskEntry)
+	{
+		TVShell.Message("OnTimeout - " + taskEntry.Caller+ " Hour=" + taskEntry.Hour +" Minute =" + taskEntry.Minute+  " Once =" + taskEntry.Once);
+        
+		OutputTimeStamp();
+        
+        if(TVShell.PowerCause=="AutoUpdate" || TVShell.PowerCause=="FullUpdate")
+			return;
+		
+		// If we've been idle for ten minutes, then connect for the check
+		// for debug purpose, we reduce this time to 10 sec
+		var idletime=10*60
+		if(TVShell.SystemInfo.Flavor == "internal"||TVShell.SystemInfo.Flavor == "debug")
+			idletime=10;
+		
+		var fAllowCheck	=	( TVShell.IdleTime > idletime ) &&
+							( TVShell.ConnectionManager.WANState == ConnectState_Disconnected ||
+							 !TVShell.UserManager.CurrentUser ||
+							 !TVShell.UserManager.CurrentUser.IsAuthorized );
+
+		switch (taskEntry.Caller) {
+
+		case UPDATE_TASK_CALLER_NAME:
+			// Skip if no service entry
+			TVShell.TaskScheduler.Save();
+
+			if (!TVShell.ServiceList("connection::nightly_login")||IsWMPPlaying())
+				break;
+
+            // if there is mail check, then update check will follow
+			// so here we don't need to do trigger task again
+			if(GetTask(taskScheduler,EMAILCHECK_TASK_CALLER_NAME) && TVShell.ServiceList("mail::check"))
+				break;
+
+
+			// If we're off, then power on temporarily to do the check
+			if (!TVShell.IsOn) {
+				var entry = TVShell.BuiltinServiceList.Add("RunOnce");
+				entry.URL = "msntv:/Connecting/AboutToSynch.html?caller=updatecheck";
+				TVShell.PowerOn("AutoUpdate");
+				break;
+			}
+ 
+			
+			if (fAllowCheck)
+			{
+				setTimeout('LoginToService("connection::nightly_login");', 10);
+				TVShell.IdleTime = 0;
+				TVShell.ScreenSaver.UserActive(); // Wakeup screen saver
+			}
+			break;
+
+		case EMAILCHECK_TASK_CALLER_NAME:
+			if (taskEntry.Once == 0 && taskEntry.Next > 0) 
+			{
+				// This is anchor-time occurrence of a periodic task, so we delete all following 
+				// occurrences
+				RemoveAllOccurrence(EMAILCHECK_TASK_CALLER_NAME, TVShell.TaskScheduler, false);
+				ScheduleAllOccurrence(taskEntry,TVShell.TaskScheduler);
+			}
+			
+			// save the new task	
+			TVShell.TaskScheduler.Save();
+
+			// Skip if no service entry
+			if (!TVShell.ServiceList("mail::check"))
+			{   
+			    //TVShell.Message("Couldn't find service entery mail::check!");
+			    // if there is update check, then do update check
+				var updateTask=null;
+				if(TVShell.ServiceList("connection::nightly_login") && (updateTask = GetTask(taskScheduler,UPDATE_TASK_CALLER_NAME)))
+                {
+				  OnTimeout(taskScheduler, updateTask)
+				}
+				break;
+			}
+			
+			g_CurrentTask = taskEntry;
+
+			// If we're off, then power on temporarily to do the check
+			if (!TVShell.IsOn) {
+				var entry = TVShell.BuiltinServiceList.Add("RunOnce");
+				if(taskEntry.Once == 0)
+					entry.URL = "msntv:/Connecting/AboutToSynch.html?caller=mailcheck0";
+				else
+					entry.URL = "msntv:/Connecting/AboutToSynch.html?caller=mailcheck1";				    
+				
+				TVShell.Message("----------power on to start mail check-----------------");
+				TVShell.IdleTime = 0;
+				TVShell.PowerOn("AutoMailCheck");
+				break;
+			}
+
+			if (fAllowCheck)
+			{
+			// If we've been idle for ten minutes, then connect for the check
+				TVShell.Message("----------starting mail check-----------------");
+				TVShell.IdleTime = 0;
+				TVShell.ScreenSaver.UserActive(); // Wakeup screen saver
+				setTimeout('LoginToService("mail::check");', 10);
+				break;
+			}
+			break;
+		}
+	}
+
+    function OnPrintDeviceAdd(NewPrinter)
+	{
+
+       // if there is already another modal dialog on, simply return and not show any 
+	   // message box
+       if (PanelManager.ModalDlgOn)
+	      return;
+
+	   var PEN_COLOR = 2;
+	   var PEN_BLACK = 1;
+	   var content="<p>";
+
+	   var printername= ConditionalizePrinterName(NewPrinter.Manufacturer, NewPrinter.Model);
+	   // SDK_TRASH:  var xRes = GetXResolution();  // unsupported Epson printers return 0 for GetXResolution()
+
+	   if ((NewPrinter.Driver!="unsupported") /* SDK_TRASH && xRes */)
+	   {
+		  content+=L_SHELL_PRINTER_ADDED_TEXT1+TVShell.Utilities.EscapeHTML(printername)
+		           +L_SHELL_PRINTER_ADDED_TEXT2 + ProductShortName + ".";
+		  
+		  content+=L_SHELL_PRINTER_ADDED_MSG1
+	      
+		  PanelManager.CustomMessageBox(content,"",L_SHELL_OK_BUTTON,0,"", true, MGX_ICON_INFO)
+		  
+	   }
+		/*else if (NewPrinter.PCLCompatible==true) // not supported but PCL compatible
+	   {
+		 content+="<p>You have connected an "+TVShell.Utilities.EscapeHTML(mf)
+		           +" " +TVShell.Utilities.EscapeHTML(model)+" printer to your " + ProductShortName + ".";
+		 content+=" This printer is not supported by MSNTV. Please click <EM>Help </EM> to view all supported models.";
+		 content+=" You can select OK to continue to use this printer. However you may have problems using this printer." ;
+ 		 var result=PanelManager.CustomMessageBox(content,"","Help;OK;Cancel",2,"", true);
+         if (result==1)
+		 {   
+		     NewPrinter.Driver="pcl.dll";
+		     PrintManager.SetCurrPrinter(NewPrinter.Port);
+		 }
+		 else if (result==0)
+		 {
+             TVShell.PanelManager.Item('main').GotoURL(GetCompatPrinterListURL());
+
+		 }
+	   }*/
+	   else { // not supported, not PCL compatible
+		DisplayCompatiblePrinterDialog();
+	   }
+
+	}
+
+	function LoginIM()
+	{
+		if(!g_IMPanelCompleted)
+			return;
+
+		var CurrentUser = TVShell.UserManager.CurrentUser;
+		if (CurrentUser != null && CurrentUser.ServiceList.Item("messenger::root") != null && CurrentUser.IsAuthorized) {
+			var Messenger = CurrentUser.Messenger;
+			var EMail = CurrentUser.EMail;
+
+			if (Messenger != null && (Messenger.LocalState == MSTATE_OFFLINE || Messenger.LocalState == MSTATE_UNKNOWN) && EMail != "")
+			{
+				Messenger.LogoffReason = MLOGOFFREASON_UNKNOWN;
+				Messenger.Logon(EMail, Messenger.Services.PrimaryService);
+			}
+		}
+	}
+
+	function LogoffIM()
+	{
+
+		if (TVShell.UserManager.CurrentUser) {
+			var Messenger = TVShell.UserManager.CurrentUser.Messenger;
+			if (Messenger != null) {
+				Messenger.LogoffReason = MLOGOFFREASON_NETWORKDOWN;
+				if (Messenger.LocalState != MSTATE_OFFLINE)	{
+					Messenger.LogOff();
+	
+				}
+			}
+		}
+	}
+
+
+    //
+	// HomeNetworking - Eventhandler for Host events
+	//
+	function OnHostHandler(hnx, he, evt, status)
+	{
+    	var str="OnHostEvent: event=" + evt + " status=" + status;
+	    if (he) {
+    	    str += " host=" + he.Name;
+    	}
+    	TVShell.Message(str);
+		switch(evt)
+		{
+			case HN_EVT_ENDHOSTSCAN:   
+			case HN_EVT_ENDSERVICESCAN:
+				if ( TVShell.ConnectionManager.HomeNetworking.ContentsChanged )
+				{
+					// saves HN object and clears flag
+					TVShell.ConnectionManager.HomeNetworking.Save();
+					TVShell.Message("Save HN object");
+				}
+				break;
+		}
+
+	}
+
+	//
+	// HomeNetworking - Eventhandler for Service events
+	//
+	function OnServiceHandler(he, se, evt, status)
+	{
+    	var str="OnServiceEvent: event=" + evt + " status=" + status;
+	    if (he) {
+    	    str += " host=" + he.Name;
+    	}
+	    if (se) {
+    	    str += " share=" + se.Name;
+    	}
+    	TVShell.Message(str);
+    	
+		switch (evt) {
+		case HN_EVT_MOUNTED:
+		    if (status==0 && se)
+			{
+    			// service is up - move storage device under storage manager
+	    		var sd = se.NetStorage;
+			var addDevice = true;
+			var sd2 = TVShell.StorageManager.Item(sd.Name);
+			if ( sd2 == sd ) addDevice = false;
+			if ( addDevice )
+			{
+				// if a storage device of the same name exists in the storage manager,
+				// this will remove the old one and replace with this one.
+				TVShell.StorageManager.Add(sd);
+			}
+		    }
+		    break;
+		    
+		case HN_EVT_UNMOUNTED:
+		    if (he && se) {
+		        var name = "\\\\" + he.Name + "\\" + se.Name;
+			    TVShell.StorageManager.Remove(name);
+		    }
+		    break;
+		}
+	}	
+
+    //
+    // handle server disconnect event for homenetworking
+    //  unmount all filesystems for that server
+    //
+    function OnFileSystemChange(fs, eventId)
+    {
+		TVShell.Message("OnFileSystemChange: fs=" + fs + " event=" + eventId);
+	    if (eventId==0x4000 && HomeNetworking) {   
+	        fs = fs.toLowerCase();
+    	    var he = HomeNetworking.Item(fs);
+    	    if (he) {
+	    	    for (i=0; i<he.Count; i++) {
+		    	    var se = he.Item(i);
+			        if (se.Enabled && se.State==SHARE_STATE_MOUNTED) {
+		    	        TVShell.Message("lost server - unmounting \\\\" + he.Name + "\\" + se.Name);
+    				    se.UnMount();
+    				}
+	    		}
+	    	}
+	    }
+    }
+    
+    
+	function StartHomeNetworking()
+	{
+        HomeNetworking = TVShell.ConnectionManager.HomeNetworking;
+        HomeNetworking.SetStorageManager(TVShell.StorageManager);
+        Sink.AttachEvent(HomeNetworking, "OnHostHandler", OnHostHandler);
+        Sink.AttachEvent(HomeNetworking, "OnServiceHandler", OnServiceHandler);
+        HomeNetworking.Restore(); // fixme - done by connection manager
+        
+        // attach media render handlers      
+        Sink.AttachEvent(HomeNetworking, "OnGetVolume", OnMRGetVolume);
+        Sink.AttachEvent(HomeNetworking, "OnSetVolume", OnMRSetVolume);
+        Sink.AttachEvent(HomeNetworking, "OnPlay", OnMRPlay);
+        Sink.AttachEvent(HomeNetworking, "OnStop", OnMRStop);
+        Sink.AttachEvent(HomeNetworking, "OnPause", OnMRPause);
+        Sink.AttachEvent(HomeNetworking, "OnGetLocation", OnMRGetLocation);
+        Sink.AttachEvent(HomeNetworking, "OnSetLocation", OnMRSetLocation);
+        Sink.AttachEvent(HomeNetworking, "OnSetURI", OnMRSetURI);
+        Sink.AttachEvent(HomeNetworking, "OnGetURI", OnMRGetURI);
+        Sink.AttachEvent(HomeNetworking, "OnNext", OnMRNext);
+        Sink.AttachEvent(HomeNetworking, "OnPrev", OnMRPrev);
+        Sink.AttachEvent(HomeNetworking, "OnForwardNext", OnMRForwardNext);
+        Sink.AttachEvent(HomeNetworking, "OnRewind", OnMRRewind);       
+	}
+
+    function OnPopupWhitelistChange( PopupWhitelistURL )
+    {
+		popupControlBeingLoaded =  TVShell.CreateXmlDocument();
+		popupControlBeingLoaded.async = true;
+		popupControlBeingLoaded.resolveExternals = false;
+		popupControlBeingLoaded.validateOnParse = false;
+		popupControlBeingLoaded.onreadystatechange=OnPopupControlAvail;
+		popupControlBeingLoaded.ondataavailable=OnPopupControlAvail;
+		popupControlBeingLoaded.load(TVShell.PopupWhitelistURL);
+    }
+
+	function OnPopupControlAvail()
+    {
+		// We do this in case there are several notifications in a row
+		// that changed the popupControl list. If so, this would have
+		// resulted in several popupControl's being loaded. This function
+		// would be called when each one of these has completed. However,
+		// the last one may still be loading. As we care only about the 
+		// final one, we check to make sure that the LAST popup doc is 
+		// finished loading before assigning it to the popupControl variable. 
+		var loading = popupControlBeingLoaded;
+		if ( loading.readyState == 4 )
+		{
+			popupControl = loading;
+		}
+    }
+    
+    function OnRedirectListChange( RedirectListURL )
+    {
+		redirectControlBeingLoaded =  TVShell.CreateXmlDocument();
+		redirectControlBeingLoaded.async = true;
+		redirectControlBeingLoaded.resolveExternals = false;
+		redirectControlBeingLoaded.validateOnParse = false;
+		redirectControlBeingLoaded.onreadystatechange=OnRedirectControlAvail;
+		redirectControlBeingLoaded.ondataavailable=OnRedirectControlAvail;
+		redirectControlBeingLoaded.load(TVShell.RedirectListURL);
+    }
+
+	function OnRedirectControlAvail()
+    { 
+		var loading = redirectControlBeingLoaded;
+		if ( loading.readyState == 4 )
+		{
+			redirectControl = loading;
+		}
+    }
+
+
+	// Pop-up panel
+	function OnBeforeWindowOpen(panelname, url, urlContext, urlDownload, name, features, dispEvent, result)
+	{
+		TVShell.Message("OnBeforeWindowOpen("+panelname+", "+url+", "+urlContext+", "+urlDownload+", "+name+", "+features+", "+dispEvent+")");
+
+		// If some event handler before us has decided what to do, then we ignore it
+		if (result.Value != Result_Default)
+			return;
+
+		//
+		// Special feature:  If the home page does a window.open() in a certain way, then
+		// bring up a panel.
+		//
+		if (features.toLowerCase() == "msntv:panel") {
+			var CurrentUser = TVShell.UserManager.CurrentUser;
+
+			if (CurrentUser) {
+				var HomeEntry = CurrentUser.ServiceList.Item("home::home");
+				if (HomeEntry) {
+					if (urlContext.toLowerCase().indexOf(HomeEntry.URL.toLowerCase()) == 0) {
+						if ( name == "signout" )
+						{
+						  var txt = L_SHELL_CONFIRM_SIGNOUT_MSG+ ServiceFullName + "?</P>";
+						  var tmp = PanelManager.CustomMessageBox( txt , "", "Sign Out;Cancel", 0, "", false , MGX_ICON_WARNING, MGX_SIZE_SMALL );
+						  if ( tmp == 0 ) TVShell.ConnectionManager.ServiceState = Service_ReSignIn;
+						  result.Value = Result_Negative;
+						  return;
+						}
+						if ( name == "impanel" )
+						{
+							if ( diplomaDisplayed( name , "" ) )
+							{
+								  result.Value = Result_Negative;
+								  return;
+							}
+						}
+						TVShell.Message("Showing panel "+name);
+						PanelManager.Show(name);
+					}
+				}
+
+				//
+				// Special feature: If MSNRadio service does a window.open() in a certain way, then
+				// hide the WMP panel and bring up main panel
+				//
+				if (panelname == "mediapanel" && name == "main" && url && url.length > 0) {
+					var canOpenWindow = false;
+					var MSNRadioEntry = CurrentUser.ServiceList.Item("home::radioplus");
+					if (MSNRadioEntry && MSNRadioEntry.URL) {
+						var path = MSNRadioEntry.URL;
+
+						path = path.substring(0, path.lastIndexOf("/")).toLowerCase();
+
+						if (urlContext.toLowerCase().indexOf(path) == 0)
+							canOpenWindow = true;
+					}
+					if (!canOpenWindow) {
+						var MSNRadioNowPlayingEntry = CurrentUser.ServiceList.Item("msnradio::nowplaying");
+						if (MSNRadioNowPlayingEntry && MSNRadioNowPlayingEntry.URL) {
+							var path = MSNRadioNowPlayingEntry.URL;
+
+							path = path.substring(0, path.lastIndexOf("/")).toLowerCase();
+
+							if (urlContext.toLowerCase().indexOf(path) == 0)
+								canOpenWindow = true;
+						}
+					}
+					if (canOpenWindow) {
+						PanelManager.Show("main");
+						mainPanel.GotoURL(url);
+					}
+				}
+			}
+
+			result.Value = Result_Negative;
+			return;
+		}
+
+		//
+		// If we got here from a button click, then show the popup in a new page
+		//
+		var DISPID_EVPROP_ONCLICK = -2147412104;
+		var DISPID_EVPROP_ONSUBMIT = -2147412101;
+		var DISPID_EVPROP_ONCHANGE = -2147412082;
+
+		TVShell.Message("OnBeforeWindowOpen - onclick " + DISPID_EVPROP_ONCLICK +  " - dispid is " + dispEvent);
+
+		if (urlContext == "")
+			urlContext = urlDownload;
+
+		// Check the popup context to navigate in main browser instead of popup.
+		if (result.Value == Result_Default && IsURLInPopupList(urlContext, "navigateWithoutPopup")) {
+			PanelManager.Show("main");
+			mainPanel.GotoURL(url);
+			result.Value = Result_Negative;
+			return;
+		}
+		
+		// Check the popup context black list
+		if (result.Value == Result_Default && IsURLInPopupList(urlContext, "blacklist")) {
+			result.Value = Result_Negative;
+		}
+
+		// Check the popup context white list
+		if (result.Value == Result_Default && IsURLInPopupList(urlContext, "whitelist")) {
+			result.Value = Result_Positive;
+			return;
+		}
+		
+		// Check the popup download black list
+		if (result.Value == Result_Default && IsURLInPopupList(url, "targetblacklist")) {
+			result.Value = Result_Negative;
+		}
+		
+		// Check the popup download white list
+		if (result.Value == Result_Default && IsURLInPopupList(url, "targetwhitelist")) {
+			result.Value = Result_Positive;
+			return;
+		}
+		
+		if (result.Value == Result_Default) {
+			if ((dispEvent == DISPID_EVPROP_ONCLICK ||
+				dispEvent == DISPID_EVPROP_ONSUBMIT ||
+				dispEvent == DISPID_EVPROP_ONCHANGE ||
+				(urlDownload && urlDownload.indexOf("javascript:") == 0)) &&
+				TVShell.Property("NavigatePopUps")) {
+				TVShell.Message("OnBeforeWindowOpen - navigate to popup");
+				result.Value = Result_Positive;
+				return;
+			}
+
+			switch (name) {
+				case "_blank":
+					break;
+				case "_media": // Media bar
+					return;
+				case "_search": // Search pane
+					return;
+				case "_parent":  // Frame's parent, or _self
+				case "_self": // Same window & frame
+				case "_top": // Same window, top frame
+					result.Value = Result_Positive;
+					return;
+			}
+		}
+		
+		// If we get here, we aren't navigating to the pop-up. Save the url and make some noise.
+		lastSuppressedPopupURL = url;
+		TVShell.NotifyPopupBlocked(url);
+
+		if (!TVShell.Property("PopUpsPanel"))
+			return;
+
+		var popupname;
+
+		if (TVShell.Property("MultiplePopUps"))
+			popupname = "popup::"+name;
+		else
+			popupname = "popup::";
+
+		var popuppanel = PanelManager.Item(popupname);
+
+		if (!popuppanel) {
+			var popup   = new Panel(popupname, "", APP_PANEL_TYPE, SLIDING_PANEL_STYLE,75,0,false);
+			popup.start = new BottomRectangle(LARGE_PANEL_HEIGHT,-LARGE_PANEL_HEIGHT);
+			popup.end = new BottomRectangle(LARGE_PANEL_HEIGHT,0);
+			popuppanel = AddPanel(PanelManager, popup);
+
+			//
+			// Set a popup panel accelerator for internal builds only
+			//
+			if (flavor != "release" && flavor != "ppe")
+				SetPanelAccel(popup.name, FALT, "p".charCodeAt(0));  // Alt+u
+		}
+
+		if (popuppanel) {
+			//
+			// Panel is shown (maybe) during navigate complete event
+			//
+			popuppanel.GotoURL(url);
+		    SetStartRect( popuppanel, new BottomRectangle(LARGE_PANEL_HEIGHT,-FIND_PANEL_HEIGHT) );
+		    SetEndRect( popuppanel, new BottomRectangle(LARGE_PANEL_HEIGHT,0) );
+			result.Value = Result_Negative;
+		}
+	}
+
+
+	function OnBeforeWindowClose(panelname, childwindow, result)
+	{
+		TVShell.Message("OnBeforeWindowClose("+panelname+", "+childwindow+")");
+		// If some event handler before us has decided what to do, then we ignore it
+		TVShell.Message("result.Value = "+result.Value); 
+		if (result.Value != Result_Default)
+			return;
+
+		if(panelname == "impanel") {
+			g_IMPanelCompleted = false;
+		}
+		if (panelname.indexOf("popup::") == 0) {
+			result.Value = Result_Negative;
+			RemovePanel(panelname);
+		}
+
+		else if (panelname == popuppanel.name) {
+			result.Value = Result_Negative;
+			PanelManager.Hide(panelname);
+			g_DisplayingNarrowbandTips = false;
+		}
+
+		else if (panelname ==servicepanel.name)
+		{
+			var cause=TVShell.ConnectionManager.WANCause;
+			if(cause=="mail::check" && TVShell.ConnectionManager.WANState == ConnectState_Connected)
+			{
+			   var entry=TVShell.ServiceList("connection::nightly_login");
+			   if(entry &&GetTask(TVShell.TaskScheduler,UPDATE_TASK_CALLER_NAME) && g_CurrentTask && g_CurrentTask.Once==0 && !IsWMPPlaying())
+			   {   
+			        TVShell.Message("---------doing update check after email check-----------"  );
+					result.Value = Result_Negative;
+					g_CurrentTask = null;
+					TVShell.ConnectionManager.WANCause="connection::nightly_login"
+					PanelManager.Item(panelname).GotoURL(entry.URL);
+					return;
+			   }
+			   else
+			   {
+					result.Value = Result_Positive;
+					RemovePanel(panelname);
+					TVShell.ConnectionManager.WANDisconnect();
+			   }
+
+			}
+		}
+	}
+
+	//
+	// OnStartup is fired after the config completed call is made
+	//
+	function OnStartup()
+	{
+		//
+		// Enable crash logs on first chance exceptions
+		//
+		TVShell.EventLog.CrashLogMgr.FirstChance = true;
+
+		//
+		// Connection Manager
+		//
+		InitializeConnectionManager();
+
+		if (mainPanel)
+			mainPanel.SetClientCapability("connectionType", "off");
+		var popup = PanelManager.Item(popuppanel.name);
+		if(popup)
+		    popup.SetClientCapability("connectionType",  "off");
+		
+		// 
+		//	Tell the bootrom that we have booted by updating the build number
+		//  in the prefs file to the build number of this build
+		//
+		var rom = new ActiveXObject("MSNTV.BootRom");
+
+		rom.Read();
+		rom.BuildNumber = TVShell.SystemInfo.BuildNumber;
+		rom.Flush();
+
+		
+		// update service hours periodically
+		
+		UpdateServiceHours();
+		setInterval(UpdateServiceHours, 15 * 1000 * 60);
+
+		StartHomeNetworking();
+
+		// One time only (until all settings are cleared) automatically turn on auto-update
+		var PersistentProperties = TVShell.Property("Persistent/");
+		var PersistentAutoUpdatePropertyName = "AutoSet_AutoUpdate";
+
+		if (PersistentProperties && !PersistentProperties(PersistentAutoUpdatePropertyName)) {
+			// Check for an update task
+			var TaskScheduler = TVShell.TaskScheduler;
+			var UpdateTask = null;
+			var i;
+
+			for (i = 0; i < TaskScheduler.Count && UpdateTask == null; i++) {
+				if (TaskScheduler.Item(i).Caller == UPDATE_TASK_CALLER_NAME) {
+					UpdateTask = TaskScheduler.Item(i);
+				}
+			}
+
+			if (!UpdateTask) {
+				UpdateTask = TaskScheduler.Add();
+
+				if (UpdateTask != null) {
+					// check for a pre-existing email check task
+					var NightlyEmailCheck = null;
+
+					for (i = 0; i < TaskScheduler.Count && NightlyEmailCheck == null; i++) {
+						//since mail check is a recurring task, we need to get the first one that is not marked as once
+						if (TaskScheduler.Item(i).Caller == EMAILCHECK_TASK_CALLER_NAME && TaskScheduler.Item(i).Once==0) {
+							NightlyEmailCheck = TaskScheduler.Item(i);
+						}
+					}
+
+					if(NightlyEmailCheck) {
+						UpdateTask.Hour = NightlyEmailCheck.Hour;
+						UpdateTask.Minute = NightlyEmailCheck.Minute;
+					} else {
+						UpdateTask.Hour = 0;  // Midnight
+						UpdateTask.Minute = Math.floor(55*Math.random());
+					}
+
+					UpdateTask.Caller = UPDATE_TASK_CALLER_NAME;
+					UpdateTask.Once = 0;
+					UpdateTask.Active = true;
+					TaskScheduler.Save();
+				}
+			}
+
+			PersistentProperties.Add(PersistentAutoUpdatePropertyName, "T");
+			PersistentProperties.Save();
+		}
+
+		TVShell.ValidatePersistentInternetCache();
+	}
+
+	function OnCapsLockChange(isOn)
+	{
+		DeviceControl.PlaySound("KeyCapsOn");
+	}
+
+	function OnScreenSaverActivated()
+	{
+		TVShell.Message("ScreenSaver Activated");
+	}
+
+	function OnScreenSaverDeactivated()
+	{
+		TVShell.Message("ScreenSaver Deactivated");
+	}
+
+
+    var g_PopupThumbnailCaptured=false;
+	function CapturePopupThumbnail()
+	{
+		if(g_PopupThumbnailCaptured)
+		   return;
+		var ContentSync	= new ActiveXObject("MSNTV.ContentSync");	
+		var popupThumbnailLoc=ContentSync.TempPath + "\\PopupThumbnail.jpg";
+		TVShell.ThumbnailManager.CaptureThumbnail(TVShell.PanelManager.Item('popuppanel').WebBrowser,popupThumbnailLoc,false);
+		g_PopupThumbnailCaptured=true;
+	}
+
+	//
+	// Wire up Javascript Event handlers
+
+	//
+
+	var Sink = new ActiveXObject("MSNTV.MultipleEventSink");
+
+	Sink.AttachEvent(TVShell,					"OnServiceListKeyDown",	 OnServiceListKeyDown);
+	Sink.AttachEvent(TVShell,                   "OnPowerOn",             OnPowerOn);
+	Sink.AttachEvent(TVShell,                   "OnPowerOff",            OnPowerOff);
+	Sink.AttachEvent(TVShell,                   "OnSecretCode",          OnSecretCode);
+	Sink.AttachEvent(TVShell,                   "OnMemoryStateChange",   OnMemoryStateChange);
+	Sink.AttachEvent(TVShell,                   "OnFileSystemChange",    OnFileSystemChange);
+	Sink.AttachEvent(TVShell,                   "OnStartup",   			 OnStartup);
+	Sink.AttachEvent(TVShell,					"OnCapsLockChange",		 OnCapsLockChange);
+	Sink.AttachEvent(TVShell,					"OnPopupWhitelistChange",OnPopupWhitelistChange);
+	Sink.AttachEvent(TVShell,					"OnRedirectListChange",  OnRedirectListChange);
+	Sink.AttachEvent(TVShell.UserManager,       "OnAuthorizationChange", OnAuthorizationChange);
+	Sink.AttachEvent(TVShell.UserManager,       "OnBeforeAuthorizationChange", OnBeforeAuthorizationChange);
+	Sink.AttachEvent(TVShell.UserManager,       "OnUserAdded",           OnUserAdded);
+	Sink.AttachEvent(TVShell.ConnectionManager, "OnServiceStateChange",  OnServiceStateChange);
+	Sink.AttachEvent(TVShell.ConnectionManager, "OnWANStateChange",      OnWANStateChange);
+	Sink.AttachEvent(TVShell.ConnectionManager, "OnWANConnect",          OnWANConnect);
+	Sink.AttachEvent(TVShell.ConnectionManager, "OnLANStateChange",      OnLANStateChange);
+	Sink.AttachEvent(TVShell.ConnectionManager, "OnLANConnect",          OnLANConnect);
+	Sink.AttachEvent(PanelManager,				"OnDownloadBegin",       OnDownloadBegin);
+	Sink.AttachEvent(PanelManager,				"OnShellExecute",        OnShellExecute);
+	Sink.AttachEvent(PanelManager,				"OnDownloadComplete",    OnDownloadComplete);
+	Sink.AttachEvent(PanelManager,				"OnDocumentComplete",    OnDocumentComplete);
+	Sink.AttachEvent(PanelManager,				"OnBeforeNavigate2",     OnBeforeNavigate2);
+	Sink.AttachEvent(PanelManager,				"OnNavigateComplete2",   OnNavigateComplete2);
+	Sink.AttachEvent(PanelManager,				"OnURLMONDialog",        OnURLMONDialog);
+	Sink.AttachEvent(PanelManager,				"OnWININETDialog",       OnWININETDialog);
+	Sink.AttachEvent(PanelManager,				"OnNavigateError",		 OnNavigateError);
+	Sink.AttachEvent(PanelManager,				"OnPrintCommand",		 OnPrintCommand);
+	Sink.AttachEvent(PanelManager,				"OnBeforeWindowOpen",	 OnBeforeWindowOpen);
+	Sink.AttachEvent(PanelManager,				"OnBeforeWindowClose",	 OnBeforeWindowClose);
+	Sink.AttachEvent(PanelManager,				"OnBeforeShow",			 OnBeforeShow);
+	Sink.AttachEvent(PanelManager,				"OnAfterShow",			 OnAfterShow);
+	Sink.AttachEvent(PanelManager,				"OnBeforeHide",			 OnBeforeHide)
+	Sink.AttachEvent(PanelManager,				"OnAfterHide",			 OnAfterHide);
+	Sink.AttachEvent(PanelManager,				"OnAfterPanelCreated",	 OnAfterPanelCreated);
+	Sink.AttachEvent(PanelManager,				"OnAfterFullScreenModeChange",	 OnAfterFullScreenModeChange);
+	Sink.AttachEvent(TVShell.TaskScheduler,		"OnTimeout",		 	 OnTimeout);
+	Sink.AttachEvent(TVShell.StorageManager,	"OnDeviceRemove",		 OnDeviceRemove);
+	Sink.AttachEvent(TVShell.StorageManager,	"OnDeviceAdd",			 OnDeviceAdd);
+	Sink.AttachEvent(TVShell.PrintManager,		"OnPrintDeviceAdd",		 OnPrintDeviceAdd);
+	Sink.AttachEvent(TVShell,                   "OnScreenSaverActivated", OnScreenSaverActivated );
+	Sink.AttachEvent(TVShell,                   "OnScreenSaverDeactivated", OnScreenSaverDeactivated );
+	Sink.AttachEvent(TVShell,					"OnGetUIString",		 OnGetUIString);
+	Sink.AttachEvent(TVShell,					"OnLocaleChanged",		 OnLocaleChanged);
+	Sink.AttachEvent(TVShell.LoginManager,      "IDCRLOnAuthStateChanged", IDCRLOnAuthStateChanged);
+
+	// Called After we attach an event handler so we don't lose any changes
+	OnPopupWhitelistChange( TVShell.PopupWhitelistURL );
+	
+	//Go ahead and set the popupControl to be the one being loaded .
+	popupControl = popupControlBeingLoaded;
+	
+	OnRedirectListChange( TVShell.RedirectListURL );
+	redirectControl = redirectControlBeingLoaded;
+
+    function OnGetUIString(filepath, variablename, stringresult)
+	{
+		document.all.ResourceFile.src=filepath;
+		stringresult.Value=eval(variablename);
+	}
+    
+    function OnLocaleChanged()
+	{
+		document.all.ShellResourceFile.src="msntv:/msntv_shell_loc.js";
+	}
+
+    //Set Locale
+
+	function LoadLocaleSetting()
+	{
+		var SystemInfo=TVShell.SystemInfo
+        
+		SystemInfo.Restore();
+
+		var curlang=SystemInfo.CurLang;
+
+		if(curlang)
+			SystemInfo.CurLang=curlang;
+		else
+			SystemInfo.CurLang=0x0409;
+
+		curlang=SystemInfo.CurLang;
+			
+		//SystemInfo.BuiltInLangs="0404 0409"
+		//SystemInfo.AddOnLangs="0407"
+
+		var BuiltInLangs=SystemInfo.BuiltInLangs;
+		var AddOnLangs=SystemInfo.AddOnLangs;
+
+		var builtinlangs=ParseLangs(BuiltInLangs);
+		var addonlangs=ParseLangs(AddOnLangs);
+
+		var foundBuiltIn=false;
+		var foundAddOn=false;
+		
+		if(builtinlangs && builtinlangs.length>0)
+		{    
+			for(i=0;i<builtinlangs.length;i++)
+			   if(builtinlangs[i]==curlang)
+			   {
+					foundBuiltIn=true;
+					break;
+				}
+		}	
+		
+		if(!foundBuiltIn && addonlangs && addonlangs.length>0)
+		{    
+			for(i=0;i<addonlangs.length;i++)
+			   if(addonlangs[i]==curlang)
+			   {
+					foundAddOn=true;
+					break;
+				}
+		}	
+
+		if(!foundBuiltIn && !foundAddOn)
+			SystemInfo.CurLang=0x0409;
+
+		var params="en-us";
+		if(curlang!=0x0409)
+		  params=GetIECode(curlang)+",en-us;q=0.5"
+
+		TVShell.ApplyLocaleSetting(curlang,GetCodePage(curlang),params,foundAddOn);
+		TVShell.RefreshFileProtocol();
+	}
+
+	LoadLocaleSetting();
+	//
+	// Add extra start up panels
+	//
+	AddPanels("Startup");
+
+	mainPanel.PageTransitionOn = true;
+	transition = TVShell.PanelManager.PageTransition;
+
+	if (transition)
+		mainPanel.PageTransition=transition;
+	else
+		mainPanel.PageTransition="progid:DXImageTransform.Microsoft.Fade(duration=0.100)"; //default
+	
+	
+	//reschedule recurring event mail check	
+	TVShell.TaskScheduler.Restore();
+	var taskindex;
+	var task;
+	var mailcheck=null;
+	
+	for(taskindex=0;taskindex<TVShell.TaskScheduler.Count;taskindex++) {
+		task=TVShell.TaskScheduler.Item(taskindex)
+		if(task.Caller== "NightlyEmailCheck" && task.Once==0)
+			mailcheck=task;
+	}
+	
+	if(mailcheck) {
+		RemoveAllOccurrence("NightlyEmailCheck", TVShell.TaskScheduler,false);
+		ScheduleAllOccurrence(mailcheck,TVShell.TaskScheduler);
+	}
+
+
+	//
+	// Tell the shell that we're all set to go after waiting just a moment to let the
+	// system settle
+	//
+	setTimeout("TVShell.NotifyConfigCompleted();", 500);
+
+	TVShell.TaskScheduler.Enabled=true;
+
+	</SCRIPT>
+	</HEAD>
+	<BODY>
+	</BODY>
+</HTML>

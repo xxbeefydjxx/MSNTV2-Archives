@@ -1,0 +1,356 @@
+<html xmlns:msntv>
+<?import namespace="msntv" implementation="../HTC/Progress.htc">
+<head>
+<SCRIPT LANGUAGE=Javascript SRC="msntv:/Javascript/TVShell.js"></SCRIPT>
+<script language="Javascript" src="msntv:/Javascript/Panels.js"></script>
+<script language="Javascript" src="msntv:/Javascript/ProgressPanel.js"></script>
+
+<script language="JavaScript">
+
+
+var ContentSync	= new ActiveXObject("MSNTV.ContentSync");
+var tempDir		= ContentSync.TempPath;
+var utilities		= TVShell.Utilities;
+var TEMPPHOTODIR = tempDir + "\\photo";
+var SELECTEDIMAGEPATH = TEMPPHOTODIR + "\\OPWImageList.txt";
+var PanelManager	= TVShell.PanelManager; 
+var ThumbnailManager		= TVShell.ThumbnailManager;
+var PhotoManager			= TVShell.PhotoManager;
+var Sink = new ActiveXObject("MSNTV.MultipleEventSink");
+var response		="";
+var gTotalFiles		= 0;
+var gCurrentFileIdx = 0;
+var gSuccesspageHref = null;
+var gCancelledpageHref = null;
+var gFailurepageHref = null;
+var gCancelPressed = false;
+var gManifest = null;
+var gFileList = null;
+var gImageFilenameList = null;
+var gCurrentThumbNail=null;
+var gCurrentFileName=null;
+var gCurrentPercent = 0;
+var gProgressInc = 0;
+var gDownloadedFName = null;
+var gStartDownloadTime=null;
+
+function window.OnCancel()
+{
+	var PicturePusher	= document.all.PicturePusher;
+	PicturePusher.CancelPost();
+	gCancelPressed = true;
+	
+	if ( gCancelledpageHref)
+		document.location.href = gCancelledpageHref;
+}
+
+
+function URLDecode(psEncodeString) 
+{
+	// Return the decoded string with the '+' removed, 
+	// unescape twice to make sure the '{' '}' will be decoded.
+	return unescape(unescape(psEncodeString.replace(/\+/g , " "))); 
+}
+
+
+function UpdateProgressPercent(nPercent)
+{
+	// to avoid the connection from timing out.
+	TVShell.IdleTime = 0;
+	
+	uploadProgress.percentComplete = nPercent;
+
+	// make sure the progress  panel stays up in case auto login dismiss it.
+	if ( !IsProgressShowing()){
+		SetProgressText("Uploading photos . . .");
+		SetProgressPercent(gCurrentPercent);
+		SetProgressStopFunction(window.OnCancel);
+		ShowProgressPanel();		
+	}
+}
+
+function UpdateProgressText(msg)
+{
+	document.all.currentFileName.innerHTML = gCurrentFileName;
+	document.all.currentFileNumber.innerHTML = gCurrentFileIdx;
+	currentImage.src = gCurrentThumbNail;
+}
+
+
+function updateProgressPanel()
+{
+	gCurrentPercent += gProgressInc;
+	
+	if(! IsProgressShowing())	
+		ShowProgressPanel();
+	
+	SetProgressPercent( gCurrentPercent );
+}
+
+
+
+function PostComplete(hr)
+{
+	TVShell.Message("Post Completed   hr=" + hr);
+	var gotoURL;
+	var uploadedFiles = gCurrentFileIdx;
+	if ( hr == 0 ){
+		if ( gCurrentFileIdx < gTotalFiles ){
+			updateProgressPanel();
+			setTimeout("prepareUploadFile(gCurrentFileIdx++);",100);
+			return;
+		}
+		parent.setUploadOK(1);  // tell the parent that upload is successful.
+		if ( gSuccesspageHref && gSuccesspageHref != "" )
+			gotoURL = gSuccesspageHref;
+		else
+			gotoURL = "msntv:/opw/opwfinalpage.html";
+	}
+	else{
+		if ( gFailurepageHref && gFailurepageHref != "" )
+			gotoURL = gFailurepageHref;
+		else{
+			//No Failure page specified and cancel button was not pressed;
+			//  just show the cancel message on the final page.
+			TVShell.Message("   No Failure page found");
+			gotoURL = "msntv:/opw/opwfinalpage.html?msg=cancel";		
+		}
+		uploadedFiles--;  // discount for failure
+	}
+
+	HideProgressPanel();
+	var endUploadTime = new Date();
+	var totalTime = endUploadTime.getTime() - gStartDownloadTime.getTime();
+	TVShell.Message("hr=" + hr + "|uploaded=" + uploadedFiles + " of " + gTotalFiles + "|time=" + totalTime);
+	TVShell.EventLog.Usage("OPW", "hr=" + hr + "|uploaded=" + uploadedFiles + " of " + gTotalFiles + "|time=" + totalTime);
+
+	TVShell.Message("     PostComplete  gotoURL=" + gotoURL );
+	document.location.href = gotoURL;
+}
+
+
+
+
+function isValidURL( str )
+{
+	var isURL = false;
+
+	if ( str != "" )
+		isURL = /^http.*/.test(str.toLowerCase());
+
+	return isURL;
+}
+
+
+
+
+function prepareUpload()
+{
+	UpdateProgressPercent(0);
+	var PicturePusher	= document.all.PicturePusher;
+	PicturePusher.Clear();
+
+	gManifest = window.external.Property("TransferManifest");
+	if ( gManifest ){
+		gFileList = gManifest.selectNodes("transfermanifest/filelist/file");
+		gTotalFiles = gFileList.length;
+		gProgressInc = Math.round( 100/gTotalFiles );
+		document.all.totalFileNumber.innerHTML = gTotalFiles;
+		
+		var uploadinfo = gManifest.selectSingleNode("transfermanifest/uploadinfo");
+		var successpageNode = uploadinfo.selectSingleNode("successpage");
+		var cancelledpageNode = uploadinfo.selectSingleNode("cancelledpage");
+		var failurepageNode = uploadinfo.selectSingleNode("failurepage");
+
+		if ( successpageNode ){
+			TVShell.Message( successpageNode.xml );
+			gSuccesspageHref = successpageNode.getAttribute("href");
+			if ( gSuccesspageHref == null || gSuccesspageHref == "" ){
+				// let's check to see if the content contains URL
+				gSuccesspageHref = successpageNode.text;
+				if ( ! isValidURL( gSuccesspageHref ) )
+					gSuccesspageHref = "";
+			}
+		}
+
+		if ( cancelledpageNode){
+			TVShell.Message( cancelledpageNode.xml);
+			gCancelledpageHref = cancelledpageNode.getAttribute("href");
+			if ( gCancelledpageHref == null || gCancelledpageHref == "" ){
+				// let's check to see if the content contains URL
+				gCancelledpageHref = cancelledpageNode.text;
+				if ( ! isValidURL( gCancelledpageHref ) )
+					gCancelledpageHref = "";
+			}
+		}
+
+		if ( failurepageNode ){
+			TVShell.Message( failurepageNode.xml );
+			gFailurepageHref = failurepageNode.getAttribute("href");
+			if ( gFailurepageHref == null || gFailurepageHref == "" ){
+				// let's check to see if the content contains URL
+				gFailurepageHref = failurepageNode.text;
+				if ( ! isValidURL( gFailurepageHref ) )
+					gFailurepageHref = "";
+			}
+		}
+	}
+
+	var allImageFileNames = utilities.ReadTextFile(SELECTEDIMAGEPATH);
+	gImageFilenameList = allImageFileNames.split('\n');
+
+	if ( gImageFilenameList.length > 0 && isValidURL( gImageFilenameList[0] ))
+		gProgressInc /= 2;
+
+	gStartDownloadTime = new Date();
+	prepareUploadFile(gCurrentFileIdx++);
+}
+
+
+
+function prepareUploadFile( index )
+{
+	var node = gFileList.item(index);
+	var idx = parseInt( node.getAttribute("id"));
+	var fileName = gImageFilenameList[ idx ];
+
+	SetProgressText("Uploading photo " + (index + 1 ) + " of " + gTotalFiles);
+
+	if ( gDownloadedFName && gDownloadedFName != "" ){
+		utilities.RemoveFile( gDownloadedFName );
+		gDownloadedFName = null;
+	}
+
+	if ( isValidURL( fileName ) ){
+		TVShell.Message("     prepareUploadFile():    URL=" + fileName);
+		var dstURL = TEMPPHOTODIR + PhotoManager.GetFileName(fileName);
+    		if(ThumbnailManager.CopyFileToURL(fileName, dstURL)){
+			TVShell.Message("   file copied from " + fileName +  " to " + dstURL);
+			gDownloadedFName = dstURL;
+			updateProgressPanel();
+    		}
+		else
+			TVShell.Message("   Failed to copy file from URL " + fileName);
+	}
+	else
+		TVShell.Message("    prepareUploadFile():    local file=" + fileName);
+
+	setTimeout("uploadFile(" + index + ");",100);
+}
+
+
+
+function uploadFile( index )
+{
+	TVShell.Message("    uploadFile( " + index + " )");
+	UpdateProgressPercent(0);
+	var PicturePusher	= document.all.PicturePusher;
+	PicturePusher.Clear();
+
+	var node = gFileList.item(index);
+	var postNode = node.selectSingleNode("post");
+	var formIdx;
+	var formNode;
+	var formNode_name;
+	if ( postNode ){
+		TVShell.Message("        postURL:  " + postNode.getAttribute("href"));
+		PicturePusher.PostURL = postNode.getAttribute("href");
+		var formdataNodes = node.selectNodes("post/formdata");
+		if ( formdataNodes && formdataNodes.length > 0 ){
+			for (formIdx=0; formIdx < formdataNodes.length; formIdx++ ){
+				formNode = formdataNodes.item( formIdx );
+				formNode_name = formNode.getAttribute("name");
+				if ( formNode_name && formNode_name != "" ){
+					TVShell.Message("        formData:        " + formNode_name + "=" + formNode.text);
+					PicturePusher.AddString(formNode_name, formNode.text);
+				}
+			}
+		}
+		var idx = parseInt( node.getAttribute("id"));
+		var fileName = gImageFilenameList[ idx ];
+		if ( fileName && fileName != "" ){
+			if ( isValidURL( fileName ) )
+				fileName = gDownloadedFName;
+			PicturePusher.AddFile(postNode.getAttribute("name"), fileName);
+			TVShell.Message("        AddFile:        " + postNode.getAttribute("name")+ "=" + fileName);
+			gCurrentThumbNail = URLDecode(node.getAttribute("source"));
+			gCurrentFileName = URLDecode(node.getAttribute("destination"));
+			setTimeout("PicturePusher.Post();",100);
+			return true;
+		}
+	}
+
+	TVShell.Message("   uploadFile()    no postNode ");
+	return false;
+}
+
+
+function onLoad()
+{
+	window.external.SetWizardButtons(0,0,0);
+	window.external.SetHeaderText("Copying Pictures", "The Wizard is currently copying your pictures to the printing company");
+	uploadProgress.percentComplete = 0;
+	SetProgressText("Uploading photos . . .");
+	SetProgressPercent(0);
+	SetProgressStopFunction(window.OnCancel);
+}
+
+
+function cleanup()
+{
+	SetProgressStopFunction(null);
+	
+	if ( gDownloadedFName && gDownloadedFName != "" ){
+		utilities.RemoveFile( gDownloadedFName );
+		gDownloadedFName = null;
+	}
+}
+
+
+</script>
+</head>
+<BODY onload="onLoad();"  unload="cleanup();">
+	<div style="display:none;">
+	<object id="PicturePusher" classid="CLSID:1D38F646-5E85-47ec-9A2A-5435C02084D7" width="500" height="100" border="1" VIEWASTEXT>
+		<param name="ProgressIncrement" value="5">
+	</object>
+	</div>
+	<div style="position: absolute; top: 105px; left: 70px;">
+	<table border="0">
+		<tr>
+			<td valign="top"><span id="currentFileName"></span></td>
+		</tr>
+		<tr>
+			<td><msntv:progressbar id='uploadProgress' style='margin-top:13px; width=220px;'/></td>
+		</tr>
+		<tr>
+			<td valign="bottom">Sending file <span id="currentFileNumber">0</span> of <span id="totalFileNumber">0</span></td>
+		</tr>
+	</table>
+	</div>
+	<div style="position:absolute; top: 85px; left: 350px; width: 200px; height: 200px;">
+		<img id="currentImage" src="msntv:/images/1x1.gif">
+	</div>
+	<script language="JavaScript" for="PicturePusher" event="OnProgress(nPercent)">		
+		UpdateProgressPercent(nPercent);	
+	</script>
+
+	<script language="JavaScript" for="PicturePusher" event="OnFileBegin(iFile)">
+		UpdateProgressText(iFile);
+	</script>
+
+	<script language="JavaScript" for="PicturePusher" event="OnPostResponse(strResponse)">
+		TVShell.Message( "OnPostResponse. rsp='" + strResponse + "'" );
+		response = strResponse;
+	</script>
+
+	<script language="JavaScript" for="PicturePusher" event="OnPostComplete(hr)">
+		PostComplete(hr);
+	</script>
+
+	<script language="JavaScript">
+		updateProgressPanel();
+		setTimeout("prepareUpload();", 50);
+	</script>
+</BODY>
+</html>

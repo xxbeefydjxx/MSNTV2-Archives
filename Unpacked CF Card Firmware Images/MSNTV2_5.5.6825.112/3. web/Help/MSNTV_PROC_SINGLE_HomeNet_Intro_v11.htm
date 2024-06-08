@@ -1,0 +1,38 @@
+<html xmlns:msntv>
+<head>
+	<title>HomeNetIntro</title>
+	<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+	<?IMPORT namespace="msntv" implementation="MSNTVPaneHelpHeading.htc">
+	<?IMPORT namespace="msntv" implementation="../HTC/ScrollingDIV.htc">	<!-- Required for scrolling area -->
+	<SCRIPT LANGUAGE=Javascript SRC="msntv:/Javascript/TVShell.js"></SCRIPT>
+	<script language="Javascript" src="ServerPaneHelp.js"></script>
+	<SCRIPT LANGUAGE=Javascript SRC="msntv:/msntv_help_loc.js"></SCRIPT>
+	<SCRIPT LANGUAGE=Javascript SRC="msntv:/msntv_common_loc.js"></SCRIPT>
+	<link REL=StyleSheet TYPE="text/css" HREF="MSNTVPaneHelp.css">
+</head>
+<body>
+
+<!-- showScrollTop="true" displays gradient in text area -->
+<!--
+<msntv:MSNTVPaneHelpHeading id="labelID" helpURL="MSNTV_ALTTOC_main.htm" showScrollTop="true" />
+<script>document.all.labelID.label = L_HELP_LABEL;</script>
+<script>document.all.labelID.label2 = L_HELP_CONNECTION_ITEM3_LABEL2;</script>
+-->
+<script>
+document.write("<msntv:MSNTVPaneHelpHeading label='" + L_HELP_LABEL +"' label2='" + L_HELP_CONNECTION_ITEM3_LABEL2 + "' showScrollTop='true' />");
+</script>
+
+<div id="scrollArea">
+	<span class="description">
+	<script>document.write(L_HELP_CONNECTION_ITEM3_TEXT);</script>
+	</span>
+</div>
+
+<div id="sideBar">
+	<msntv:CustomButton onclick="javascript:ReturnToReferrer()" id="doneID"/>
+	<script>document.all("doneID").label =  L_BUTTON_DONE;</script>
+	<script>document.all("doneID").focus();</script>
+</div>
+
+</body>
+</html>

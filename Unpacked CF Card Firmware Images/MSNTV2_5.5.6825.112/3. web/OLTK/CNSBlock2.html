@@ -1,0 +1,36 @@
+<html xmlns:msntv>
+<head>
+<meta HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=iso-8859-1">
+<title>You are not allowed to view this page</title>
+<link rel="StyleSheet" type="text/css" href="../CSS/Dialog.css">
+<script language="Javascript" src="../Javascript/TVShell.js"></script>
+<script language="javascript" src="../Javascript/ServiceList.js"></script>
+<script language="javascript" src="msntv:/msntv_components_loc.js"></script>
+<script>
+	function FriendlyErrorTitle()
+	{
+		return L_OLTK_CNSBLOCK2_TITLE;
+	}
+
+  	function FriendlyErrorBody()
+	{
+		var errorBody = L_OLTK_CNSBLOCK2_MSG + TVShell.PolicyManager.RatedURI + L_OLTK_CNSBLOCK2_MSG2;
+		return errorBody;
+	}
+    
+</script>
+</head>
+<BODY class=fullPage>
+	<div id="icon"></div>
+	<div id="title" class="header">
+		<SCRIPT>
+			document.write(FriendlyErrorTitle());
+		</SCRIPT>
+	</div>	
+	<div id="description">
+		<SCRIPT>
+		document.write(FriendlyErrorBody());
+		</SCRIPT>
+	</div>
+</body> 
+</html>

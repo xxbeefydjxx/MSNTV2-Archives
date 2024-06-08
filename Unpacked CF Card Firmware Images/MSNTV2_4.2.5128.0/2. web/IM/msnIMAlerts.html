@@ -1,0 +1,79 @@
+<HTML xmlns:msntv>
+<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../HTC/SettingsHeading.htc">
+
+<head>
+<title>IM Alert Setting</title>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/TVShell.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/SettingsTemplate.js"></SCRIPT>
+
+<LINK REL=StyleSheet TYPE="text/css" HREF="../CSS/Settings.css">
+<script language=javascript>
+var MsgrObj = TVShell.UserManager.CurrentUser.Messenger;
+var CurrentUser = TVShell.UserManager.CurrentUser;
+
+	MALERT_BUDDYREQUEST			= 0x00000001;
+	MALERT_INVITATION			= 0x00000002;
+	MALERT_BUDDYONLINE			= 0x00000004;
+	MALERT_NEWMESSAGE			= 0x00000008;
+
+
+function SetAlertEvent()
+{
+	if(buddyOnlineYes.checked) {
+		MsgrObj.AlertLevel(MALERT_BUDDYONLINE)=true;
+		CurrentUser.FeatureSettings = CurrentUser.FeatureSettings | MALERT_BUDDYONLINE;
+	}
+	else {
+		MsgrObj.AlertLevel(MALERT_BUDDYONLINE)=false;
+		CurrentUser.FeatureSettings = CurrentUser.FeatureSettings & (~(MALERT_BUDDYONLINE));
+	}
+	TVShell.UserManager.Save();
+	TVShell.DeviceControl.PlaySound("Task_Complete");
+}
+function setCheckBox()
+{
+	if ((CurrentUser.FeatureSettings & MALERT_BUDDYONLINE) > 0)
+		buddyOnlineYes.checked = true;
+	else 
+		buddyOnlineNo.checked = true;
+}
+
+</script>
+</head>
+<body>
+<SCRIPT>OpenSettingsTable( "Messenger" , "Change Messenger alerts" , "" );</SCRIPT>
+
+	<DIV id=sideBar>
+		<msntv:CustomButton href="javascript:history.go(-1)" onClick="SetAlertEvent()" class=sideBarButton id=Save label="Save Changes" />
+		<msntv:CustomButton href="javascript:history.go(-1)" class=sideBarButton id="default" label="Cancel" />
+		<script>document.all("default").focus();</script>
+	</DIV>
+	
+	<DIV id=scrollArea>
+		<DIV class=description>
+<script>
+	if ((CurrentUser.FeatureSettings & MALERT_BUDDYONLINE) > 0)
+		document.write("<P>" + ServiceShortName + " currently shows you an alert each time one of your Messenger contacts comes online.<P>To stop seeing alerts when contacts come online, choose <EM>Don't show me online contact alerts</EM>, and then choose <EM>Save Changes</EM>.");
+	else 
+		document.write("<P>" + ServiceShortName + " currently does not show you an alert each time one of your Messenger contacts comes online.<P>To start seeing alerts when contacts come online, choose <EM>Show me online contact alerts</EM>, and then choose <EM>Save Changes</EM>.");
+</script>
+			<P>
+			<table cellspacing=0 cellpadding=0 border=0>	
+				<tr><td><input id=buddyOnlineYes type=radio name=BuddyOnline></td><td width=8></td>
+					<td>Show me online contact alerts</td></tr>
+				<tr><td cols=3 height=8></td></tr>
+				<tr><td><input id=buddyOnlineNo  type=radio name=BuddyOnline></td><td width=8></td>
+					<td>Don't show me online contact alerts</td></tr>
+  			</table>
+			<P>
+			
+ 		</DIV>
+	</DIV>
+<script>
+	setCheckBox();
+</script>
+<SCRIPT>CloseSettingsTable();</SCRIPT>
+
+</body>
+</html>

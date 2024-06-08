@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+	<cfg:Configuration version="1.1" xmlns:cfg="http://schemas.microsoft.com/Passport/PPCRL">
+		<cfg:Settings>
+			<cfg:UpdateNeededInterval>604800</cfg:UpdateNeededInterval>
+			<cfg:ResolveTimeout>0</cfg:ResolveTimeout>
+			<cfg:ConnectTimeout>60000</cfg:ConnectTimeout>
+			<cfg:SendTimeout>30000</cfg:SendTimeout>
+			<cfg:ReceiveTimeout>30000</cfg:ReceiveTimeout>
+			<cfg:ConfigServerURI>http://clientconfig.passport-ppe.net/ppcrlconfig.srf</cfg:ConfigServerURI>
+			<cfg:Certificate></cfg:Certificate>
+		</cfg:Settings>
+		<cfg:ServiceURIs>
+			<cfg:PassportSecurityTokenService>https://loginnet.passport-ppe.com/RST.srf
+      </cfg:PassportSecurityTokenService>
+			<cfg:PassportMD5Auth>https://loginnet.passport-ppe.com/ppsecure/md5auth.srf</cfg:PassportMD5Auth>
+			<cfg:URL_PasswordReset>https://loginnet.passport-ppe.com/resetpw.srf
+      </cfg:URL_PasswordReset>
+			<cfg:URL_PassportNetwork>https://accountservices.passport-ppe.net/ppnetworkhome.srf
+      </cfg:URL_PassportNetwork>
+			<cfg:URL_AccountServices>https://accountservices.passport-ppe.net/accountservices.srf
+      </cfg:URL_AccountServices>
+			<cfg:URL_PaneHelpFrame>https://accountservices.passport-ppe.net/hp.srf
+      </cfg:URL_PaneHelpFrame>
+			<cfg:URL_ShortLivedCertificateAuthority>https://certservices.passport-ppe.com/slca.srf
+      </cfg:URL_ShortLivedCertificateAuthority>
+		</cfg:ServiceURIs>
+	</cfg:Configuration>
+</Signature>

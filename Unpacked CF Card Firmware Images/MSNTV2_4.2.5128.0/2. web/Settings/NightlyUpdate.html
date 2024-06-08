@@ -1,0 +1,194 @@
+<HTML xmlns:msntv>
+<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../HTC/SettingsHeading.htc">
+<?IMPORT namespace="msntv" implementation="../HTC/DropDownList.htc">
+<TITLE>Nightly Update</TITLE>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/TVShell.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/ConnectionManager.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/SettingsTemplate.js"></SCRIPT>
+
+<SCRIPT LANGUAGE=Javascript>
+	var	UPDATE_TASK_CALLER_NAME		= "NightlyUpdate";
+	var	TaskScheduler = TVShell.TaskScheduler;
+	var	UpdateTask = null;
+
+	for (var i = 0; i < TaskScheduler.Count && UpdateTask == null; i++)
+		if (TaskScheduler.Item(i).Caller == UPDATE_TASK_CALLER_NAME)
+			UpdateTask = TaskScheduler.Item(i);
+
+	function GetTollWarning()
+	{
+		var WANProvider = TVShell.ConnectionManager.WANProvider;
+		var Connector = TVShell.ConnectionManager.MSNIAManager.CurrentConnector;
+		var outText = "";
+		if ( WANProvider != MSNIAModemProviderName ) return outText;
+		
+		if (Connector && (Connector.Name != LocalConnectorName)) {
+			var Connector2 = GetConnectorByName(LocalConnectorName);
+
+			if (Connector2) {
+				Connector = Connector2;
+			}
+		}
+
+		
+		if (Connector && Connector.Name == LocalConnectorName)
+		{
+			var Phonebook = Connector.Phonebook;	
+
+			if (Phonebook.Count == 0)
+			{
+				outText ="<P>Your internet access numbers are out of date.  The next time you connect you will be supplied with new internet access numbers.</P>";
+			}
+			else
+			{
+				var some = SomeLongDistance(Phonebook);
+				var allnum =AllLongDistance(Phonebook);
+				if ( some )
+				{
+					if ( allnum )
+					{
+						outText = "<P>All of the access numbers we found appear to be toll or long-distance numbers.</P>";  
+					}
+					else
+					{
+						outText = "<P>Some of the access numbers we found appear to be toll or long-distance numbers.</P>";
+					}
+					outText += "<P>Remember, you are responsible for determining and paying any toll or long distance charges.</P>";
+				}
+				else
+					outText += "<P>You are responsible for determining whether your access numbers are subject to any long-distance, toll, or additional charges from your phone company, and for paying all of these additional charges.</P>";
+			}
+		}
+		return outText;
+	}
+	
+	function SaveChanges()
+	{
+		if (autoConnect.checked)
+		{
+			var txt = GetTollWarning();
+			if ( txt != "" )
+			{
+				var tmp = TVShell.PanelManager.CustomMessageBox( txt,
+					"Toll Charge Warning", "Access Numbers;Save;Cancel",
+					2, "", false, 0x30, 0 );
+
+				if ( tmp == 2 ) return;
+				if ( tmp == 0 )
+				{
+					document.location =  "msntv:/Settings/AccessNumbers.html";
+					return;
+				}
+			}
+			
+			if (UpdateTask == null)
+			{
+				UpdateTask = TaskScheduler.Add();
+				UpdateTask.Caller = UPDATE_TASK_CALLER_NAME;
+			}
+			if (UpdateTask != null)
+			{
+				UpdateTask.Hour = updateTime.selectedIndex;
+				UpdateTask.Minute = Math.floor(55*Math.random());
+				UpdateTask.Once = 0;
+				UpdateTask.Active = true;
+				TaskScheduler.Save();
+			}
+		}
+		else
+		{
+			if (UpdateTask != null)
+			{
+				TaskScheduler.Remove(UpdateTask.ID);
+				TaskScheduler.Save();
+			}
+		}
+		history.back();
+	}
+</SCRIPT>
+
+<LINK REL=StyleSheet TYPE="text/css" HREF="../CSS/Settings.css">
+</HEAD>
+
+<SCRIPT>
+
+function onLoadPage()
+{
+	document.all.updateTime.AppendItem("Midnight");
+	document.all.updateTime.AppendItem("1 am");
+	document.all.updateTime.AppendItem("2 am");
+	document.all.updateTime.AppendItem("3 am");
+	document.all.updateTime.AppendItem("4 am");
+	document.all.updateTime.AppendItem("5 am");
+	document.all.updateTime.AppendItem("6 am");
+	document.all.updateTime.AppendItem("7 am");
+	document.all.updateTime.AppendItem("8 am");
+	document.all.updateTime.AppendItem("9 am");
+	document.all.updateTime.AppendItem("10 am");
+	document.all.updateTime.AppendItem("11 am");
+	document.all.updateTime.AppendItem("Noon");
+	document.all.updateTime.AppendItem("1 pm");
+	document.all.updateTime.AppendItem("2 pm");
+	document.all.updateTime.AppendItem("3 pm");
+	document.all.updateTime.AppendItem("4 pm");
+	document.all.updateTime.AppendItem("5 pm");
+	document.all.updateTime.AppendItem("6 pm");
+	document.all.updateTime.AppendItem("7 pm");
+	document.all.updateTime.AppendItem("8 pm");
+	document.all.updateTime.AppendItem("9 pm");
+	document.all.updateTime.AppendItem("10 pm");
+	document.all.updateTime.AppendItem("11 pm");
+	document.all.updateTime.selectedIndex = 3;
+
+	if (UpdateTask != null)
+	{
+		autoConnect.checked = true;
+		updateTime.selectedIndex = UpdateTask.Hour;
+	}
+	else
+	{
+		autoConnect.checked = false;
+		updateTime.disabled = true;
+	}
+}
+</SCRIPT>
+
+<BODY onLoad="onLoadPage();">
+<SCRIPT>OpenSettingsTable( "Automatic update check" , "" , "" , true );</SCRIPT>
+
+<DIV id=buttonBar>
+	<!--<A href="javascript:history.go(-1)" class=sideBarButton>Save changes</A>-->
+	<msntv:CustomButton onclick="SaveChanges()" class=buttonBarButton label="Save Changes" id="Done" />
+	<msntv:CustomButton onclick="history.go(-1)" class=buttonBarButton id="default" label="Cancel" />
+	<script>document.all("Done").focus();</script>
+</DIV>
+
+<DIV id=nonScrollArea>
+	<DIV class=description>
+		<P>
+		You can set your <SCRIPT>document.write(ProductShortName);</SCRIPT> to automatically connect to
+		the <SCRIPT>document.write(ServiceFullName);</SCRIPT> each night to check for new updates. If 
+		updates are available, your <SCRIPT>document.write(ProductShortName);</SCRIPT> will automatically accept 
+		them.
+		</P>
+		<P>
+		To turn on the automatic update feature, check this box, and 
+		then choose a connection time from the menu below.
+		</P>
+		<TABLE class=controlTable>
+		<TR>
+			<TD><INPUT type=checkbox id=autoConnect onClick="updateTime.disabled=!this.checked">
+			<TD>Automatically connect to <SCRIPT>document.write(ServiceShortName);</SCRIPT> each night
+		</TR>
+		</TABLE>
+		<P>
+		I want my <SCRIPT>document.write(ProductShortName);</SCRIPT> to connect to <SCRIPT>document.write(ServiceShortName);</SCRIPT> around:
+		</P>
+		<msntv:dropDownList id="updateTime" size="4" selectedIndex=3 openDirection="up" style="width:120px;margin-top:5px"/>
+	</DIV>
+
+</DIV>
+<SCRIPT>CloseSettingsTable();</SCRIPT>
+
+</BODY>

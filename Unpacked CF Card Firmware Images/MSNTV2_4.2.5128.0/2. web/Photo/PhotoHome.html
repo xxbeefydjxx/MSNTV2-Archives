@@ -1,0 +1,401 @@
+<html xmlns:msntv>
+<?IMPORT namespace="msntv" implementation="../HTC/PhotoHeading.htc">
+<head>
+	<title>Photo Home</title>
+	<link rel=StyleSheet type="text/css" href="../css/Base.css">	
+	<link rel=StyleSheet type="text/css" href="../css/Photo.css">
+
+	<script LANGUAGE=Javascript SRC="../Javascript/TVShell.js"></script>
+	<script language="Javascript" src="../Javascript/ContentPaneHelp.js"></script>
+	<script src="msntv:/Javascript/Parameters.js"></script>
+	<script src="msntv:/Javascript/ProgressPanel.js"></script>
+	<script src="msntv:/Javascript/ServiceList.js"></script>
+	<script src="msntv:/Javascript/HomeNetworking.js"></script>
+	<script language="javascript" src="msntv:/Javascript/DMRHome.js"></script>
+	<script src="Photos.js"></script>
+
+	
+	
+	<script>
+	    
+		var ThumbnailImage = "";
+		var linkNum=0;
+
+		var xmlDoc = null;		
+		var featuredArticlesService = null;
+
+		var allImageFileNames="";
+		var FileNameArray="";
+		var nPhotos=0;
+				
+		var foundContentService = false;
+		var SideBarStr = "";
+		var SideBarStrBase = "<table cellpadding=0 cellspacing=0 width=100% align=center >"
+		
+		var SideBarStrOffline = "<tr>\
+							<td align='justify'>\
+								Read our articles on taking better pictures, digital photography news,\
+								and product reviews.\
+							</td>\
+						 </tr>\
+						 <tr><td height=15px></td></tr>\
+						 <tr>\
+							<td>\
+								<UL class=links><LI><a onclick='ConfirmSignOn();'>More Articles and Photo Tips</a></LI></ul>\
+							</td>\
+						</tr>";
+							
+		var SideBarStrServiceUnavail = "<tr>\
+							<td align='justify'>\
+								Read our articles on taking better pictures, digital photography news,\
+								and product reviews.\
+							</td>\
+						 </tr>\
+						 <tr><td height=15px></td></tr>\
+						 <tr>\
+							<td>\
+								<UL class=links><LI><a onclick='ServiceUnavail();'>All articles</a></LI></ul>\
+							</td>\
+						</tr>";
+							
+		var SideBarStrServiceLoading = "<tr>\
+							<td align='justify'>\
+								A moment while we lookup some articles of possible interest to you.\
+							</td>\
+						 </tr>";
+							
+		var SideBarStrNoFeaturedArticles = "<tr>\
+							<td align='justify'>\
+								There are no featured articles on Photos.\
+							</td>\
+						 </tr>";
+							
+		function ServiceUnavail()
+		{
+			var msgTxt = "These articles are temporarily unavailable."
+			var result = PanelManager.CustomMessageBox(msgTxt,"","Okay;",0,"", false, 0x30, 1);
+		}
+
+		function SetupAllArticles()
+		{
+			if(CurrentUser && CurrentUser.IsAuthorized)
+			{
+				SideBarStr=SideBarStrBase + SideBarStrServiceUnavail + "</table>";
+				featuredArticlesService = CurrentUser.ServiceList.Item("home::PhotosFeaturedArticles");
+				if(featuredArticlesService)
+				{
+					//TVShell.Message("fa = " + featuredArticlesService.URL);
+					var ArticlesXMLService = CurrentUser.ServiceList.Item("home::PhotosArticlesXML");
+				
+					if(ArticlesXMLService)
+					{
+						//TVShell.Message("A = " + ArticlesXMLService.URL);
+						var XMLURL = ArticlesXMLService.URL;
+					
+						xmlDoc = new ActiveXObject("Msxml2.DOMDocument");
+						if (xmlDoc) 
+						{
+							SideBarStr=SideBarStrBase + SideBarStrServiceLoading + "</table>";
+							xmlDoc.async = true;
+							xmlDoc.resolveExternals = false;
+							xmlDoc.validateOnParse = false;
+							xmlDoc.onreadystatechange=XmlDocOnReadyStateChange;
+							xmlDoc.ondataavailable=XmlDocOnDataAvailable;
+							xmlDoc.load(XMLURL);
+						}
+					}
+				}
+			}
+			else
+			{
+				SideBarStr=SideBarStrBase + SideBarStrOffline + "</table>";
+			}
+		}
+	
+		function XmlDocOnReadyStateChange()
+		{
+			//alert( "OnReady:xmlDoc.readyState=" + xmlDoc.readyState );
+			if (xmlDoc && xmlDoc.readyState == 4)
+				LoadAllArticles();
+		}
+
+		function XmlDocOnDataAvailable()
+		{
+			//alert( "DataAvail:xmlDoc.readyState=" + xmlDoc.readyState );
+			if (xmlDoc && xmlDoc.readyState == 4)
+				LoadAllArticles();
+		}
+
+		function LoadAllArticles()
+		{
+			var SideBarStrOnline = "";
+			var numArticles = -1;
+			var nodes = null;
+			if (xmlDoc) 
+			{
+				nodes = xmlDoc.selectNodes("//item");
+				numArticles = nodes ? nodes.length : -1;
+			}
+			if(numArticles > 0)
+			{
+				var firstNode = nodes.item(0);
+				if(firstNode)
+				{ 
+					var firstNodeTitle		 = firstNode.selectSingleNode(".//title");
+					var firstNodeDescription = firstNode.selectSingleNode(".//description");
+					var firstNodeURL		 = firstNode.selectSingleNode(".//url");
+							
+					var imageURL="Assets/photo_apollo.jpg";
+								
+					var firstNodeImageSrc    = firstNode.selectSingleNode(".//src");	
+					if(	firstNodeTitle && firstNodeDescription && firstNodeURL)
+					{
+						SideBarStrOnline="<tr><td><img src='";
+						if(firstNodeImageSrc)
+						{
+							var HomeService = CurrentUser.ServiceList.Item("home::home");
+							if(HomeService)
+							{
+								var HomeURL = HomeService.URL;
+								if(HomeURL)
+								{
+									imageURL=Utilities.CombineUrl(HomeURL, firstNodeImageSrc.text, 0);
+								}
+							}
+						}
+									
+						SideBarStrOnline+=imageURL;
+						SideBarStrOnline+="' width=150 height=112>\
+								</td>\
+							</tr>\
+							<tr><td height=10px></td></tr>\
+							<tr>\
+								<td><a href='";
+						SideBarStrOnline+=firstNodeURL.text;
+						SideBarStrOnline+="'><b>";
+						SideBarStrOnline+=firstNodeTitle.text;
+						SideBarStrOnline+="</b></a></td>\
+										</tr>\
+										<tr><td height=10px></td></tr>\
+										<tr><td>";
+						SideBarStrOnline+=firstNodeDescription.text;			
+						SideBarStrOnline+="</td></tr>\
+										   <tr><td height=15px></td></tr>\
+										   <tr>\
+											<td>\
+												<UL class=links><LI><a href='";
+									
+						SideBarStrOnline+=featuredArticlesService.URL;					
+						SideBarStrOnline+=	"'>All articles</a></LI></ul>\
+										</td>\
+									</tr>";
+						SideBarStr = SideBarStrBase +
+							SideBarStrOnline + "</table>";
+
+					}	
+				}
+			}
+			else
+			{
+				SideBarStr=SideBarStrBase + SideBarStrNoFeaturedArticles + "</table>";
+			}
+			if(document.all.sideBar)
+				sideBar.innerHTML = SideBarStr;
+			TVShell.Message( "here8" );
+		}
+
+		function BuildScrollArea()
+		{
+			linkNum=0;
+			var numAlbum = 0;
+			var str="<table  cellpadding=0 cellspacing=0 width=100%><tr><td><span style=\"display:block; padding-top:5px;\"><span class=sectionTitle>Photos saved on "+ProductShortName+"</span></td></tr>";
+			
+			// build saved albums section	
+				
+			var topAlbum=GetFirstNonEmptyAlbum();			
+			if(topAlbum)
+			{
+
+				var StorageDevice = StorageManager.Item(userDataVolumeName);
+				if (StorageDevice) 
+				{	
+					var pathText = "Photo\\Albums\\" + topAlbum;
+					var firstAlbumXmlStr = GetImageHREFNodes(StorageDevice, pathText);
+					if (firstAlbumXmlStr)
+					{
+						FileNameArray = firstAlbumXmlStr.split('\n');
+						nPhotos = FileNameArray.length - 1;
+					}
+			
+					if(nPhotos > 0 && FileNameArray[0])
+					{								
+						str+="<tr><td width=100%>\
+									<table cellpadding=0 cellspacing=0 width=100% xborder=1>\
+										<tr>\
+											<td vAlign=top align=left width=230px height=150>";					
+						
+						ThumbnailImage = FileNameArray[0];
+						var fileName;
+						if(PhotoManager.IsInRotatedImageList(FileNameArray[0]))
+						{
+							var rotatedImageLocation = PhotoManager.GetRotatedImageLocation();
+							var dstURL = rotatedImageLocation + FileNameArray[0];
+							fileName = PhotoManager.RequestThumbnail(dstURL, true, true);
+						}
+						else
+							fileName = PhotoManager.RequestThumbnail(FileNameArray[0],false, true);
+						
+						str+="<img id=imgThumbnail src='" + fileName + "' height=150>";								
+						str+="</td></tr></table></td></tr><tr><td height=10px></td></tr>";
+					}
+	
+					numAlbum++;
+				}
+			}
+			str += "</table>";
+			
+			var ScrollAreaStr = str;
+			
+			var firstAlbum=GetFirstAlbum();
+
+			if(firstAlbum)
+			{
+				ScrollAreaStr+="<span style=\"display:block; padding-top:5px;\"><UL class=links><LI><a onclick=\"GotoURL('PhotoOrganizer.html?state=organize');\">View albums</a></LI>";
+				ScrollAreaStr+="<LI><a onclick=\"GotoURL('PhotoOrganizer.html?state=screensaver');\">Change Screensaver</a></LI></ul>";
+			}
+			else
+			{
+				ScrollAreaStr+="<span style=\"display:block; padding-top:5px;\"><UL class=links><LI><a id=albumLearnMore href='" + GetDMRHelpURL("MSNTV_PROC_SINGLE_Photos_Albums") + "'>Learn More</a></LI></ul></span>";
+			}
+			
+		    
+
+			//build USB Storage Devices	section	
+			var numUSBDevice=0;
+			var str="<div><span style=\"display:block; padding-top:5px;\"><UL class=links>";
+			for (j=0; j<StorageManager.Count; j++) 
+			{
+				allImageFileNames="";
+				FileNameArray="";
+				nPhotos=0;
+				
+				var StorageDevice = StorageManager.Item(j);
+				if (StorageDevice.Removable && 
+					!StorageDevice.IsNetwork && 
+					StorageDevice.Mounted) 
+				{
+					numUSBDevice++;
+					var pathText = "DCIM";
+					allImageFileNames = GetImageHREFNodes(StorageDevice, pathText);
+					if (allImageFileNames)
+					{
+						FileNameArray = allImageFileNames.split('\n');
+						nPhotos = FileNameArray.length - 1;
+					}
+					
+					var destURL="Viewer.html";
+					destURL+="?location=0&StorageDeviceVN=";
+					destURL+=escapeplus(escape(StorageDevice.VolumeName));
+																					
+					if(nPhotos>0)
+						str+="<LI><a id=link" + linkNum++ +" onclick=\"GotoURL('" + destURL + "');\">View " + nPhotos + " photos</a></LI>";
+					else
+					{
+						str+="<LI><a id=link" + linkNum++ + " onclick=\"GotoURL('" + destURL + "')\"; class=ellipsis style='width:350px;'>";
+						str+=StorageDevice.Name;
+						str+="</a></LI>";
+                    }
+				}
+			}	  
+			
+			str+="</ul></div>";
+			
+			ScrollAreaStr+="<span class=sectionTitle>Photos on memory "+((numUSBDevice>1)?"cards":"card")+"</span>";
+			if(numUSBDevice==0)
+			{
+				ScrollAreaStr+="<span style=\"display:block; padding-top:5px;\"><UL class=links><LI><a id='mcLearnMore' href='" + GetDMRHelpURL("MSNTV_PROC_SINGLE_Photos_MemoryCard") + "'>Learn More</a></LI></ul></span>";
+			}else
+				ScrollAreaStr+=str;
+					
+	
+			
+			// build home network Storage Devices section
+			ScrollAreaStr += "<span class=sectionTitle>Photos on home network</span>";
+			ScrollAreaStr += BuildHomeNetworkList("MSNTV_PROC_SINGLE_Photos_HomeNet_Offline_v11.htm");
+		  
+			return ScrollAreaStr;
+
+		}
+		
+		function SetDefaultFocus()
+		{
+			if (document.all.link0) {
+				link0.focus();
+			}
+			else 
+			{
+				var	anchors = scrollArea.all.tags("a")
+				if (anchors.length > 0) 
+				{
+					anchors[0].focus();
+				}
+			}
+		}
+	
+		function OnLoad()
+		{
+			SetupAllArticles();
+			if(document.all.sideBar)
+				sideBar.innerHTML = SideBarStr;
+			if(document.all.scrollArea)
+				scrollArea.innerHTML = BuildScrollArea();
+			SetDefaultFocus();
+		}
+		
+		function OnDeviceAdd()
+		{
+			if(document.all.scrollArea)
+				scrollArea.innerHTML = BuildScrollArea();
+			SetDefaultFocus();
+		}
+
+		function OnDeviceRemove()
+		{
+			if(document.all.scrollArea)
+				scrollArea.innerHTML = BuildScrollArea();
+			SetDefaultFocus();
+		}
+
+		function OnThumbnailReadyHome(imgSrcURL)
+		{
+			if(ThumbnailImage == imgSrcURL)
+			{
+				var thumbURL  = FormatURL(PhotoManager.GetThumbnailImageURL(imgSrcURL));
+				document.all["imgThumbnail"].src = thumbURL;
+			}
+		}
+		
+		Sink.AttachEvent(StorageManager	, "OnDeviceAdd", OnDeviceAdd);
+		Sink.AttachEvent(StorageManager	, "OnDeviceRemove", OnDeviceRemove);	
+		Sink.AttachEvent(PhotoManager	, "OnThumbnailReady"   , OnThumbnailReadyHome);
+				
+		if (HomeNetworkObj) {
+			Sink.AttachEvent(HomeNetworkObj, "OnHostHandler", OnHostHandler);
+	        Sink.AttachEvent(HomeNetworkObj, "OnServiceHandler", OnServiceHandler);
+
+			SynchronizeShares();
+		}
+		
+	</script>
+	
+</head>
+<body topmargin=0 leftmargin=0 rightmargin=0 bottommargin=0 onload="OnLoad();">
+
+	<msntv:PhotoHeading label="Home" helpDest="MSNTV_TRS_TOC_Photos"/>
+
+	<DIV id=sideBar style="width:30%; padding-left:4px;">		
+	</DIV>
+	<DIV id=scrollArea style="width:70%" class=description>		
+	</DIV>
+</body>
+</html>

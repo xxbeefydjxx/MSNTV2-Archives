@@ -1,0 +1,88 @@
+<HTML xmlns:msntv> <?IMPORT namespace="msntv" implementation="msntv:/HTC/CustomButton.htc"> <?IMPORT namespace="msntv" implementation="msntv:/HTC/SettingsHeading.htc"> <TITLE>Proxy settings</TITLE> </HEAD><LINK REL=StyleSheet TYPE="text/css" HREF="../../CSS/Settings.css"> <SCRIPT LANGUAGE=Javascript SRC="../../Javascript/TVShell.js"></SCRIPT> <SCRIPT LANGUAGE=Javascript SRC="../../Javascript/ServiceList.js"></SCRIPT> <SCRIPT LANGUAGE=Javascript SRC="../../Javascript/ConnectionManager.js"></SCRIPT> <SCRIPT LANGUAGE=Javascript SRC="../../Javascript/parameters.js"></SCRIPT> <SCRIPT LANGUAGE=Javascript SRC="../../Javascript/SettingsTemplate.js"></SCRIPT> <SCRIPT>
+	var parameters	= FindParameters(TVShell.PanelManager);
+	var ProxySettings = TVShell.ConnectionManager.HTTPProxy;
+
+	function onLoadPage()
+	{
+			document.forms.Proxy.Enabled.checked = ProxySettings.Enabled;
+			document.forms.Proxy.Server.value = ProxySettings.Server;
+			if (ProxySettings.Port > 0)
+				document.forms.Proxy.Port.value = ProxySettings.Port;
+			PROXY_Adjust();
+	}
+
+	function PROXY_Adjust()
+	{
+		if (!document.forms.Proxy.Enabled.checked) {
+			document.forms.Proxy.Server.disabled = true;
+			document.forms.Proxy.Port.disabled = true;
+			var disableMes = document.all.disableMe;
+			for (var i = 0; i < disableMes.length; i++)
+				disableMes[i].disabled = true;
+		} else {
+			document.forms.Proxy.Server.disabled = false;	
+			document.forms.Proxy.Port.disabled = false;
+			var disableMes = document.all.disableMe;
+			for (var i = 0; i < disableMes.length; i++)
+				disableMes[i].disabled = false;
+		}
+	}
+
+</SCRIPT><BODY> <SCRIPT>OpenSettingsTable( "Settings" , "Proxy settings" , "" , true );</SCRIPT><DIV id=buttonBar> <msntv:CustomButton href="javascript:SetSettings()" class=buttonBarButton id=Done label="Save Changes" /> <msntv:CustomButton href="../IMProxy/IMProxySettings.html" class=buttonBarButton id=Advanced label="Advanced" /> <msntv:CustomButton href="javascript:history.go(-1)" class=buttonBarButton id="default" label="Cancel" /> <script>document.all("Done").focus();</script> </DIV><DIV id=nonScrollArea><DIV class=description> <FORM NAME=Proxy> <P> If your <SCRIPT>document.write(ProductShortName);</SCRIPT> is part of a home network that uses a proxy, you need to provide some information about the proxy so your <SCRIPT>document.write(ProductShortName);</SCRIPT> is able to connect to the <SCRIPT>document.write(ServiceFullName);</SCRIPT>. <P> To use a proxy, check the box labeled <EM>Enable Web proxy</EM>, and then type the proxy settings in the boxes below. <P><TABLE class=controlTable> <TR> <TD>Enable Web proxy <TD><INPUT TYPE="CHECKBOX" NAME="Enabled" onclick="PROXY_Adjust();"> <TR> <TD id=disableMe>Proxy server address: <TD><INPUT TYPE="TEXT" CLASS=inputText NAME="Server" MAXLENGTH=256> <TR> <TD id=disableMe>Proxy port: <TD><INPUT TYPE="TEXT" CLASS=inputText NAME="Port" SIZE=3 MAXLENGTH=5 VALUE="80"> </TABLE> </FORM> <SCRIPT>
+			onLoadPage();
+		</SCRIPT> </DIV> </DIV> <SCRIPT>CloseSettingsTable();</SCRIPT> <SCRIPT>
+
+function SetSettings()
+{
+	var digits = "0123456789";
+	var port = document.forms.Proxy.Port.value;
+	var validPort = false;
+
+	if ( port.length > 0 )
+	{
+		validPort = true;
+		for (var i=0; i<=port.length; i++)
+		{
+			if (digits.indexOf(port.charAt(i)) == -1 )  validPort = false;
+		}
+	}
+	
+
+	if (document.all.Enabled.checked) {
+		if (document.all.Server.value == "")
+		{
+			alert("Please enter a proxy server address.");
+			document.all.Server.focus();
+			return;
+		}
+		if ( !validPort )
+		{
+			alert("Please enter a valid port.");
+			document.all.Port.focus();
+			return;
+		}
+		ProxySettings.Enabled = true;
+	} else {
+		ProxySettings.Enabled = false;
+	}
+	
+	ProxySettings.BypassLocal = true; // always on
+
+	ProxySettings.Server = document.forms.Proxy.Server.value;	
+	if ( validPort )
+		ProxySettings.Port = document.forms.Proxy.Port.value;	
+	else
+		ProxySettings.Port = 80;
+
+	ConnectionManagerSave();
+
+	TVShell.ConnectionManager.HTTPProxy.ApplySettings();
+
+	if (parameters["confirm"])
+		location.replace("../ConfirmAndTryAgain.html?Proxy=1")
+	else
+		history.go(-1);
+
+	return;
+}
+</SCRIPT> </BODY>

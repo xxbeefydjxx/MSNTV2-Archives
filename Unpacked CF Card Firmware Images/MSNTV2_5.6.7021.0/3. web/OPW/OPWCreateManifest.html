@@ -1,0 +1,457 @@
+<html>
+<head>
+<title>Create Manifest</title>
+<style>
+.iconArea
+{
+	width:  40px;
+	height: 40px;
+}
+
+.iconSize
+{
+	width: 32px;
+	height: 32px;
+}
+
+
+</style>
+<script language="javascript" src="msntv:/javascript/TVShell.js"></script>
+<script language="Javascript" src="msntv:/Javascript/Panels.js"></script>
+<script language="Javascript" src="msntv:/Javascript/ProgressPanel.js"></script>
+<SCRIPT language="Javascript" src="msntv:/Javascript/ServiceList.js"></SCRIPT>
+<SCRIPT language="Javascript" src="msntv:/Javascript/DiplomaSettings.js"></SCRIPT>
+<SCRIPT language="Javascript" src="msntv:/Javascript/ConnectionManager.js"></SCRIPT>
+
+<script language="javascript">
+var ContentSync				= new ActiveXObject("MSNTV.ContentSync");
+var tempDir					= ContentSync.TempPath;
+var userDir					= ContentSync.UserDataPath;
+var SELECTEDIMAGEPATH = tempDir + "\\photo\\OPWImageList.txt";
+var PROVIDERSFILENAME	= userDir + "\\Print\\OPWProviders.xml";
+var thumbnailManager		= TVShell.ThumbnailManager;
+var utilities				= TVShell.Utilities;
+var PhotoManager			= TVShell.PhotoManager;
+var PanelManager = TVShell.PanelManager;
+var gServiceProvidersXML	= null;
+var gXMLHttpRequest			= null;
+var gCurrentPercent = 0;
+var gProgressInc = 3;
+var gImageFileNames=null;
+var gIdx=0;
+var gOPWEntry = null;
+var gShowUploadTime = true;
+var gTotalFileSize=0;		// in KB
+var gFileSizeHttpRequest = null;
+
+
+function updateDownloadProgress()
+{
+	gCurrentPercent += gProgressInc;
+	
+	if(! IsProgressShowing() && providersDiv.style.display == "none")	
+		ShowProgressPanel();
+	
+	SetProgressPercent( gCurrentPercent );
+}
+
+
+
+function resetManifest()
+{
+	var xml = window.external.Property("TransferManifest");
+	xml.async = false;
+	xml.load("msntv:/OPW/OPWManifestTemplate.xml");
+}
+
+
+
+function createManifest()
+{
+	if(  gIdx < ( gImageFileNames.length - 1 ) ){
+		addFileToManifest(gImageFileNames[gIdx], gIdx++);
+		updateDownloadProgress();
+		setTimeout("createManifest()",10);
+	}
+	else
+		setTimeout("showServiceProviders();",10);
+}
+
+
+function isNetworkFile( fileName)
+{
+	if ( fileName && fileName != "" ){
+		return /^http.*/.test(fileName.toLowerCase());
+	}
+
+	return false;
+}
+
+function ExtractFileName(filePath)
+{
+	var fileName = filePath;
+	var pos=-1;
+	
+	if(isNetworkFile(filePath))
+		pos = fileName.lastIndexOf('/');
+	else
+		pos = fileName.lastIndexOf('\\');
+	if(pos!=-1)
+		fileName = fileName.slice(pos+1);
+	
+	pos = fileName.lastIndexOf('?');
+	if(pos!=-1)
+		fileName = fileName.slice(0, pos);
+		
+	if(fileName.indexOf('.aspx')!=-1)
+		fileName="";	
+		
+	return fileName;
+}
+
+
+function getNetworkFileSize( fileName )
+{
+	var fileSize=0;
+
+	if ( gFileSizeHttpRequest == null )
+		gFileSizeHttpRequest = new ActiveXObject("Microsoft.XMLHTTP");
+	
+	if ( gFileSizeHttpRequest ){
+		gFileSizeHttpRequest.open("HEAD", fileName, false);
+		gFileSizeHttpRequest.send();
+		var contentLen;
+		contentLen = gFileSizeHttpRequest.getResponseHeader("Content-Length");
+		TVShell.Message("getNetworkFileSize()    " + fileName + "    len=" + contentLen);
+		fileSize = parseInt( contentLen );
+	}
+	return fileSize;
+}
+
+
+function getImageFileSize( fileName )
+{
+	var theSize = 0;
+	if ( isNetworkFile( fileName ) )
+		theSize = getNetworkFileSize( fileName );
+	else
+		theSize = utilities.DetermineFileSize( fileName );
+
+	return theSize;
+}
+
+
+function addFileToManifest( fName, idx )
+{
+	var ImageDim = thumbnailManager.GetImageWidthHeightSize(fName);
+	var theDim = ImageDim.split(';');
+	var theWidth = theDim[0];
+	var theHeight = theDim[1];
+	var theSize = theDim[2];
+
+	if ( theDim.length < 3 || theWidth == "0" || theHeight == "0"){
+		TVShell.Message("  Error retrieving image Dimession  len=" + theDim.length + " W=" + theWidth + " H=" + theHeight + " S=" + theSize );
+		return;
+	}
+
+	theSize = parseInt( theSize );
+	if ( theSize <= 0 ){
+		if ( gShowUploadTime )
+			theSize = getImageFileSize(fName);
+		else
+			theSize = 0;
+	}
+	gTotalFileSize += ( theSize / 1024);
+	
+	var xml = window.external.Property("TransferManifest");
+	var fileList = xml.selectSingleNode("//filelist");
+	var fileNode = xml.createNode(1,"file","");
+	var destinationName = ExtractFileName( fName );
+	var crackExtension = destinationName.split(".");
+	fileNode.setAttribute("id",idx);
+
+	// use the thumbnail as the source for the service provide to display the 
+	//  image on their site.  This should reduce the memory to show the entire image,
+	//  and allow for more images to show up.
+	var sourceName = PhotoManager.RequestThumbnail(fName, true, false);
+	TVShell.Message("      original file: " + fName + "             thumbnail file: " + sourceName);
+
+	fileNode.setAttribute("source",sourceName);
+	fileNode.setAttribute("destination",destinationName);
+	fileNode.setAttribute("size",theSize);
+	if ( crackExtension.length > 1 )
+		fileNode.setAttribute("extension", "." + crackExtension[ crackExtension.length -1]);
+	
+	
+	var metadataNode = xml.createNode(1,"metadata", "");
+	var imageXNode = xml.createNode(1,"imageproperty","");
+	var imageYNode = xml.createNode(1,"imageproperty","");
+	
+	imageXNode.setAttribute("id","cx");
+	imageYNode.setAttribute("id","cy");
+	imageXNode.text = theWidth;
+	imageYNode.text = theHeight;
+	
+	metadataNode.appendChild(imageXNode);
+	metadataNode.appendChild(imageYNode);
+	fileNode.appendChild( metadataNode );
+	fileList.appendChild( fileNode );
+
+//	alert(xml.documentElement.xml);	
+}
+
+
+function showStatus(msg)
+{
+	TVShell.Message(msg);
+	document.all.providersDiv.innerHTML = msg;
+}
+
+
+function showUploadTimeDialog()
+{
+	// only show the dialog for narrowband
+	if (CurrentWANConnectionType() == ConnectionType_Narrowband ){
+		var TXRate = parseInt(GetTXRate());
+		var TXKBPerMinute = ((TXRate / 8) /1024) *60;
+		var TXmultiplier = isNetworkFile( gImageFileNames[0])? 1.1 : 1.0; // 1.1 times the transmision for network file.
+		var totalTXTime = Math.round( (TXmultiplier * gTotalFileSize) / TXKBPerMinute + 0.5);
+		var totalHr = 0;
+		var totalMin = totalTXTime;
+
+		// don't show any message if upload time < 15 minutes.
+		if ( totalTXTime < 15 )
+			return;
+		
+		if  (totalTXTime >= 60 ){
+			var hr = totalTXTime / 60;
+			totalHr = parseInt(hr, 10);
+
+			var rem = hr - totalHr;
+			totalMin = Math.round(rem * 60);
+		}
+
+		var timeStr = (( totalHr > 0 )? ( totalHr + " hour" + (( totalHr > 1 )? "s ": " ")) : "") + ((totalMin > 0)? (totalMin + " minute" + ((totalMin > 1)? "s": "")) : "");
+			
+		var msg = "Sending your photos to the printing company will take about <b>" + timeStr + "</b>.";
+		msg +=     "<br><br>To process your order more quickly, return to the photo-ordering page and remove some of your selections."
+		PanelManager.CustomMessageBox(msg, "", "OK", 0,"");
+	}
+}
+
+
+function gotoServiceProvider(theURL)
+{
+	var i=0;
+	var msgArray = new Array();
+	
+	msgArray[i++] = "<p><b>Do you want to send photos to the printing company?</b></p>";
+	msgArray[i++] = "<p>Any information you view or enter on the following pages is managed ";
+	msgArray[i++] = "by the printing company you have chosen, and not by the MSN TV service.</p>";
+
+	var retVal = DiplomaCustomMessageBox(0,MDIPLOMA_OPW,msgArray.join(""),"","Continue;Cancel",0,"", true, MGX_ICON_WARNING,MGX_SIZE_LARGE);
+
+	delete msgArray;
+	msgArray = null;
+	
+	if ( retVal == 0 ){
+		if ( gShowUploadTime )
+			showUploadTimeDialog();
+		
+		if (gOPWEntry.Description != "" ){
+			theURL += ((( theURL.indexOf("?") > 0 ) ? "&" : "?" ) + gOPWEntry.Description);
+		}
+		
+		TVShell.EventLog.Usage("OPW", "providerURL=" + theURL  + "|photos=" + (gImageFileNames.length - 1));
+		TVShell.Message("providerURL=" + theURL  + "|photos=" + (gImageFileNames.length - 1));
+		document.location.href = theURL;
+	}
+}
+
+
+function switchToServiceProvider()
+{
+	HideProgressPanel();
+
+	providerDownloadDiv.style.display = "none";
+	providersDiv.style.display = "block";
+}
+
+
+function showServiceProviders()
+{
+	if ( gServiceProvidersXML ){
+		var providerListPath = gOPWEntry.URL;
+		var theIconPath = providerListPath.substring(0,providerListPath.lastIndexOf("/")+1);
+		var providerListNode = gServiceProvidersXML.selectNodes('//providers[@scope="InternetPhotoPrinting"]/provider');
+		var strArray;
+		strArray = new Array();
+		var ii=0;
+		var aNode;
+		strArray[ii++] = "<table border=1 width=550>";
+		for ( i=0; i< providerListNode.length; i++){
+			aNode = providerListNode.item(i);
+			strArray[ii++] = "<tr><td><a ";
+			if ( i==0) 
+				strArray[ii++] = "id=\"firstone\" ";
+			strArray[ii++] = "onclick=\"gotoServiceProvider('";
+			strArray[ii++] = aNode.getAttribute("href");
+			strArray[ii++] = "')\"><table width=100%><tr><td rowspan=2 align=center class=\"iconArea\" >"
+			strArray[ii++] = "<img class=\"iconsize\" src=\"" + theIconPath;
+			strArray[ii++] = aNode.getAttribute("icon");
+			strArray[ii++] = "\"></td><td><b>";
+			strArray[ii++] = aNode.selectSingleNode("strings/string[@id='displayname']").text;
+			strArray[ii++] = "</b></td></tr><tr><td>";
+			strArray[ii++] = aNode.selectSingleNode("strings/string[@id='description']").text;
+			strArray[ii++] = "</td></tr></table></a></td></tr>";
+		}
+		strArray[ii++] = "</table>";
+		document.all.providersDiv.innerHTML = strArray.join("");
+		switchToServiceProvider();
+		document.all.firstone.focus();
+		delete strArray;
+		strArray = null;
+	}
+	else{
+		TVShell.Message("          showServiceProviders()   No Service Provider List");
+		if ( gXMLHttpRequest.readyState != 4 )
+			setTimeout("showServiceProviders();",500);
+		else{
+			switchToServiceProvider();
+			showStatus("We are unable to retrieve the Printing Company list at this time.  Choose <b>Cancel</b> and try again later.");
+		}
+	}
+}
+
+
+function onProviderListReady()
+{
+	if ( gXMLHttpRequest.readyState == 4 ){
+		TVShell.Message("                        onProviderListReady()(    readyState = 4");
+		if ( gXMLHttpRequest.status == 200 ){
+			TVShell.Message("      onProviderListReady()       status = 200");
+			var theXml = gXMLHttpRequest.responseXML;
+			var photoPrintingNode = theXml.selectSingleNode('//providers[@scope="InternetPhotoPrinting"]');
+			var xmldoc = TVShell.CreateXmlDocument();
+			xmldoc.async = false;
+
+			xmldoc.loadXML( photoPrintingNode.xml );
+			xmldoc.save( PROVIDERSFILENAME );
+
+			if ( gServiceProvidersXML == null ){
+				gServiceProvidersXML = xmldoc;
+				TVShell.Message("       Assigning the downloaded version to the gServiceProvidersXML");
+			}
+		}
+	}
+}
+
+
+function getServiceProviders()
+{
+	if ( utilities.FileExists(PROVIDERSFILENAME) ){
+		TVShell.Message("    found service provider list: " + PROVIDERSFILENAME );
+		if ( gServiceProvidersXML )
+			gServiceProvidersXML = null;
+		gServiceProvidersXML = TVShell.CreateXmlDocument();
+		gServiceProvidersXML.async = false;
+		gServiceProvidersXML.load( PROVIDERSFILENAME );
+	}
+	else
+		TVShell.Message("       service provider list: " + PROVIDERSFILENAME + "  NOT Found!!!");
+
+	gXMLHttpRequest = new ActiveXObject("Microsoft.XMLHTTP");
+	
+	gXMLHttpRequest.open("GET", gOPWEntry.URL, true);
+	gXMLHttpRequest.onreadystatechange = onProviderListReady;
+	gXMLHttpRequest.send(null);
+
+	TVShell.Message("     getting out getServiceProvider2()");
+}
+
+
+function init()
+{
+	updateDownloadProgress();
+	setTimeout("resetManifest();",10);
+	var allImageFileNames = utilities.ReadTextFile(SELECTEDIMAGEPATH);
+	if(allImageFileNames)
+	{
+		gImageFileNames = allImageFileNames.split('\n');
+		updateDownloadProgress();
+		gProgressInc = Math.round(90 / gImageFileNames.length);
+		if ( gImageFileNames )
+			setTimeout("createManifest();",100);
+	}
+}
+
+
+function onload()
+{
+	
+	showStatus("Please wait...");
+	window.external.SetHeaderText("Choose a printing company", "The companies below print high-quality photographs");
+	window.external.SetWizardButtons(0,0,0);
+	SetProgressText("Preparing photos for printing...");
+	SetProgressPercent(0);
+	var currentURL = document.location.href;
+	currentURL = currentURL.toLowerCase();
+
+	if ( currentURL.indexOf("nouploadtime") > 0 )
+		gShowUploadTime = false;
+
+}
+
+
+function checkOPWService()
+{
+	gOPWEntry = TVShell.ActiveServiceList("OPW::Providers");
+	if ( gOPWEntry && gOPWEntry.URL != "" ){
+		setTimeout("getServiceProviders();",50);
+		setTimeout("init();",100);
+	}
+	else{
+		providerDownloadDiv.style.display = "none";
+		NoOPWDiv.style.display = "block";
+	}
+}
+
+
+function cleanup()
+{
+	if (gXMLHttpRequest != null ){
+		TVShell.Message("     cleanup():      XMLHttpRequest");
+		gXMLHttpRequest.abort();
+		delete gXMLHttpRequest.onreadystatechange;
+		delete gXMLHttpRequest;
+		gXMLHttpRequest = null;
+	}
+
+	if ( gFileSizeHttpRequest != null ){
+		gFileSizeHttpRequest = null;
+	}
+}
+
+
+</script>
+</head>
+<body onload="onload()" OnUnload="cleanup()">
+<div id="providersDiv" style="top: 25px; display:none;" ></div>
+<div id="providerDownloadDiv" style="top:120px; display:block;">
+<table width="100%" >
+	<tr><td>Please wait while Order Prints loads information about the printing companies.</td></tr>
+	<tr align="center"><td height="40"></td></tr>
+	<tr><td>This may take several minutes, depending on your connection speed.</td></tr>
+</table>
+</div>
+<div id="NoOPWDiv" style="display:none">
+<br>
+<p><b>Order Prints</b> service is temporarily unavailable.  Please try again later.</p>
+<br><br>
+<p style="font-size:14px; font-family: segoe tv;">Choose <b>Cancel</b> to return to viewing your photos.</p>
+</div>
+<script>
+	checkOPWService();
+</script>
+</body>
+</html>

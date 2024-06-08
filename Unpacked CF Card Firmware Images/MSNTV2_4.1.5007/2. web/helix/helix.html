@@ -1,0 +1,1451 @@
+<html xmlns:msntv>
+<?import namespace="msntv" implementation="../HTC/Progress.htc">
+<?import namespace="msntv" implementation="../HTC/CustomButton.htc">
+
+<head>
+<title>MSNTV Helix Panel</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta content="JavaScript" name="vs_defaultClientScript">
+<meta content="http://schemas.microsoft.com/intellisense/ie5" name="vs_targetSchema">
+<link rel="StyleSheet" type="text/css" href="../CSS/Panel.css">
+
+<style type="text/css">
+
+td {
+	font-size: 16px;
+	color: #7A9BCC;
+}
+
+#nowplayingNormal { 
+	position: absolute;
+	left:15px;
+	top: 15px;
+	right: 15px;
+	height: 310px;
+}
+
+#nowplayingFullscreen { 
+	position: absolute;
+	left:0px;
+	top: 0px;
+	width: 100%;
+	height: 100%;
+	background-color: black;
+	visibility: hidden;
+}
+
+#Buttons {
+	visibility: hidden;
+	position: absolute;
+	left: 15px;
+	bottom: 15px;
+	height: 46px;
+	z-index: 1;
+}
+
+#vid {
+	position: absolute;
+	left:0px;
+	top: 0px;
+	z-index: 5;
+	visibility: hidden;
+}
+
+#buffering {
+	position: absolute;
+	left: 0px;
+	top: 240px;
+	z-index: 8;
+	visibility: hidden;
+}
+
+#flash {
+	position: absolute;
+	left: 15px;
+	top: 15px;
+	z-index: 7;
+}
+
+#NoMedia {
+	position: absolute;
+	left: 320px;
+	top: 0px;
+	right: 0px;
+	height: 264px;
+	padding: 8px 20px 0px 15px;
+	color: #7A9BCC;
+	background-color: #01040A;
+	border: 2px solid black;
+	z-index: 9;
+}
+
+#progress {
+	width: 100%;
+}
+
+#infoDivScroller {
+	height: 100%;
+	width: 100%;
+	padding-left: 15px;
+	padding-right: 22px;
+	overflow-y: auto;
+	behavior: url(../HTC/ScrollingDIV.htc);
+	background-color: #01040A;
+	border: 2px solid black;
+}
+
+.breakWord {
+	overflow: hidden;
+	word-wrap: break-word;
+}
+
+.bottombarButton {
+	font-size: 16px;
+	color: #002157;
+	text-align: center;
+	margin: 9px 0px 9px 8px;
+}
+
+</style>
+
+<script language="javascript" src="../Javascript/TVShell.js"></script>
+<script language="javascript" src="../Javascript/PanelImpl.js"></script>
+<script language="javascript" src="../Javascript/Panels.js"></script>
+<script language="javascript" src="../Javascript/VKCodes.js"></script>
+<script language=javascript>
+
+var ScreenSaver = TVShell.ScreenSaver;
+var utilities = TVShell.Utilities;
+var PanelManagerObj = TVShell.PanelManager;
+var Sink = new ActiveXObject("MSNTV.MultipleEventSink");
+var DeviceControl = TVShell.DeviceControl;
+var mixer = DeviceControl.AudioMixer;
+var	helixpanel = PanelManagerObj.Item("helixpanel");
+var	statuspanel = PanelManagerObj.Item("statusbar");
+
+var screenWidth  = screen.availWidth;
+var screenHeight = screen.availHeight;
+var safeHeight = screenHeight;
+var safeWidth  = screenWidth;
+var safeBottom = screenHeight;
+var safeTop    = 0;
+var safeLeft   = 0;
+if (DeviceControl.UseSafeArea) {
+	// Safe area excludes 1/16 of the total screen all around
+	safeHeight -= screenHeight / 8;
+	safeWidth  -= screenWidth  / 8;
+	safeLeft = (screenWidth -  safeWidth)  / 2;
+	safeTop  = (screenHeight - safeHeight) / 2;
+	safeBottom = safeTop + safeHeight;
+}
+var statusHeight = 36;
+var statusTop = safeBottom - statusHeight;
+
+var globalMediumURL	 = "";
+var showDetailsForQA = false;
+var globalReadyState = false; // ReadyState property is not a Real concept.  Use different logic than WMP.
+
+var kHelixPsStopped = 0;			// These are the states from the Helix OnPlayStateChange event
+var kHelixPsContacting = 1;
+var kHelixPsBuffering = 2;
+var kHelixPsPlaying = 3;
+var kHelixPsSeeking = 4;
+var kHelixPsPaused = 5;
+
+var hasURL = false;
+var hasShownHideAlert = false;
+
+//var MediumFileExtensions = new Array(".asf",".wma",".wmv",".wm",".asx",".wax",".wvx",".wmx",".wpl",".wmd",
+//									 ".mpg",".mpeg",".m1v",".mp2",".mp3",".mpa",".mpe",".mpv2",".m3u",".mpga",
+//									 ".rmi",".aif",".aifc",".aiff",".au",".snd", ".wav",".ivf", ".nsc",".avi");
+
+var UnsupportedFileExtensions = new Array(".rt",".smi",".smil");
+
+var StreamFileExtensions = new Array(".ra",".ram",".rm",".rmm",".rv",".rmvb",".rpm");
+
+var ControlPanelTimeoutID;
+var ControlPanelTimeout = 15000;
+
+var positionIntervalID;
+var positionInterval = 500;
+
+var gDuration = 0;
+
+
+var kIntPsStoppedWithoutURL = 0;
+var kIntPsStoppedWithURL = 1;
+var kIntPsWaitForNewStream = 2;
+var kIntPsWaitForValidPosition = 3;
+var kIntPsPlaying = 4;
+var kIntPsPaused = 5;
+var kIntPsFastForward = 6;
+var kIntPsRewind = 7;
+var kIntPsWaitForBuffering = 8;
+
+var internalPlayState = kIntPsStoppedWithoutURL;
+
+
+function PutDefaultFocus()
+{
+	document.all.PlayPause.focus();
+}
+
+function HasVideo()
+{
+	if (helixOcx.ImageSourceWidth > 0 && helixOcx.ImageSourceHeight > 0)
+		return true;
+	else
+		return false;
+}
+
+function IsVideoFitInWindow()
+{
+	if (helixOcx.ImageSourceHeight/helixOcx.ImageSourceWidth == 0.75)
+		return true;
+	else
+		return false;
+}
+
+// These two functions do a crude emulation of FF and REW
+// on the incoming media stream.  For now, the clip must
+// be playing in order to Rewind or Fast Forward.
+function rew_video()
+{
+	if (helixOcx.CanSeek && internalPlayState >= kIntPsPlaying) {
+		var length = helixOcx.Duration;
+		if (length) {
+			var decrement = length/60;
+			var currentPos = helixOcx.CurrentPosition;
+			if ( currentPos <= decrement)
+				helixOcx.CurrentPosition = 0;
+			else
+				helixOcx.CurrentPosition = currentPos - decrement;
+			internalPlayState = kIntPsRewind;
+			PauseButton.style.visibility="hidden";
+			PlayButton.style.visibility="visible";
+			UpdatePositionTime();
+		}
+	}
+}
+
+function ff_video()
+{
+	if (helixOcx.CanSeek && internalPlayState >= kIntPsPlaying) {
+		var length = helixOcx.Duration;
+		if (length) {
+			var currentPos = helixOcx.CurrentPosition;
+			var increment = length/60;
+			if ( currentPos + increment >= length )
+				helixOcx.CurrentPosition = length;
+			else
+				helixOcx.CurrentPosition = currentPos + increment;
+			internalPlayState = kIntPsFastForward;
+			PauseButton.style.visibility="hidden";
+			PlayButton.style.visibility="visible";
+			UpdatePositionTime();
+		}
+	}
+}
+
+function play_pause_video()
+{
+	if (internalPlayState == kIntPsPlaying) {
+		internalPlayState = kIntPsPaused;
+		helixOcx.RealPause();
+		clearInterval(positionIntervalID);
+		clearTimeout(ControlPanelTimeoutID);
+		PlayButton.style.visibility="visible";
+		PauseButton.style.visibility="hidden";
+	} else if (internalPlayState == kIntPsStoppedWithURL ||
+			   internalPlayState == kIntPsPaused ||
+			   internalPlayState == kIntPsFastForward ||
+			   internalPlayState == kIntPsRewind) {
+		if (internalPlayState == kIntPsStoppedWithURL) {
+			internalPlayState = kIntPsWaitForNewStream;
+			startingImage.style.display = "inline";
+			defaultImg.style.display = "none";
+		} else
+			internalPlayState = kIntPsPlaying;
+		helixOcx.Volume = 100;
+		helixOcx.RealPlay();
+		PlayButton.style.visibility="hidden";
+		PauseButton.style.visibility="visible";
+		positionIntervalID = setInterval("UpdatePositionTime()", positionInterval);
+		if (nowplayingFullscreen.style.visibility == "visible") {
+			clearTimeout(ControlPanelTimeoutID);
+			ControlPanelTimeoutID = setTimeout(HideControlPanel, ControlPanelTimeout);
+		}
+	}
+}
+
+
+function stop_video()
+{
+	helixOcx.ShowDisplay = false;
+	internalPlayState = kIntPsStoppedWithURL;
+	startingImage.style.display = "none";
+	defaultImg.style.display = "inline";
+	if (helixOcx.CanSeek) {
+		helixOcx.CurrentPosition = 0;
+	}
+	helixOcx.RealStop();
+	clearTimeout(ControlPanelTimeoutID);
+	clearInterval(positionIntervalID);
+	ClearBufferingInfo();
+	PlayButton.style.visibility="visible";
+	PauseButton.style.visibility="hidden";
+	PutDefaultFocus();
+}
+
+
+function show_normalscreen()
+{
+	nowplayingFullscreen.style.visibility = "hidden";
+
+	helixOcx.MaintainAspect = false;
+	helixOcx.Center = true;
+
+	helixOcx.SetWindowRect(15, 15, 320, 240);
+	clearTimeout(ControlPanelTimeoutID);
+
+	helixpanel.ZOrder = statuspanel.ZOrder - 5;
+	helixpanel.EndRect(safeLeft, statusTop - 340, safeWidth, 340);
+	flash.style.pixelTop = 15;
+	flash.style.pixelLeft = 15;
+	Buttons.style.pixelBottom = 15;
+	nowplayingNormal.style.visibility = "visible";
+	PutDefaultFocus();
+}
+
+function show_fullscreen()
+{
+	nowplayingNormal.style.visibility = "hidden";
+
+	helixOcx.Center = false;
+	helixOcx.MaintainAspect = true;
+
+	helixOcx.SetWindowRect(0, 0, 560, 359);
+	helixpanel.ZOrder = statuspanel.ZOrder + 5;
+	helixpanel.EndRect(safeLeft, safeTop, safeWidth, safeHeight);	
+	flash.style.pixelTop = 60;
+	flash.style.pixelLeft = 120;
+	Buttons.style.pixelBottom = 10;
+	nowplayingFullscreen.style.visibility = "visible";
+	PutDefaultFocus();		
+	clearTimeout(ControlPanelTimeoutID);
+	ControlPanelTimeoutID = setTimeout(HideControlPanel, ControlPanelTimeout);
+}
+
+function OnBeforeFirstShow(name)
+{
+	if (name == "helixpanel"){
+//		TVShell.Message("helix: OnBeforeFirstShow: SetWindowRect");
+		helixOcx.SetWindowRect(15, 15, 320, 240);	
+	}
+}
+
+function OnBeforeShow(name)
+{
+//	TVShell.Message("helix: OnBeforeShow " + name);
+	if (name == "helixpanel"){
+		var fontSize = TVShell.UserManager.CurrentUser.FontSize;
+		var timeWidth = fontSize < 4 ? 45 : 52;
+		var playStateWidth = 220 - (timeWidth * 2);
+
+		totalTime.style.pixelWidth = timeWidth;
+		positionTime.style.pixelWidth = timeWidth;
+		playState.style.pixelWidth = playStateWidth;
+
+		if (internalPlayState != kIntPsStoppedWithURL) {
+			var duration = helixOcx.Duration;
+			if (duration != 0) {
+				UpdateDurationDisplay(duration);
+			} else if (helixOcx.IsBroadcast) {
+				totalTime.innerText = "Live";
+			} else {
+				gDuration = 0;
+				totalTime.innerText = "";
+			}
+		}
+
+		if (internalPlayState == kIntPsWaitForNewStream || internalPlayState == kIntPsWaitForValidPosition) {
+			startingImage.style.display = "inline";
+			defaultImg.style.display = "none";
+		} else {
+			startingImage.style.display = "none";
+			defaultImg.style.display = "inline";
+		}
+
+		defaultImg.src = "../wmp/Assets/PanelPlayerDefaultScreen.jpg";
+		fullScreenImg.src = "../Panels/Images/PanelPlayerSmallBG.jpg";
+			
+//		TVShell.Message("OnBeforeShow: hasURL = " + hasURL + "  internalPlayState = " + internalPlayState);
+		if (hasURL || internalPlayState != kIntPsStoppedWithoutURL) {
+			NoMedia.style.visibility = "hidden";
+			PutDefaultFocus();
+			if (!HasVideo() && internalPlayState >= kIntPsPlaying) {
+				ShowAudioVisualization(true);
+			}
+		} else {
+			vid.style.visibility = "hidden";
+			Buttons.style.visibility = "hidden";
+			buffering.style.visibility = "hidden";
+			NoMedia.style.visibility = "visible";
+			FullScreenButton.style.visibility = "hidden";
+			HideButton.style.visibility = "hidden";
+			GoToMedia.focus();
+		}
+
+		// make sure key accelerators point to this panel
+		SwitchUserPanelAccel(name, "media");
+
+	} else if (name == "wmppanel") {
+		// only one media player can be active at a time
+		OnDone();
+	}
+}
+
+function OnBeforeHide(name)
+{
+//	TVShell.Message("helix: OnBeforeHide " + name);
+	if (name=='helixpanel') {
+		show_normalscreen();
+
+		if (!IsHighSpeed()) {
+//			TVShell.Message("helix: OnBeforeHide: speed = " + TVShell.ConnectionManager.WANAdapter.RXSpeed);
+	   		if (hasURL) {
+				TVShell.Message("helix: OnBeforeHide: stopping video");
+   				stop_video();
+			}
+	   		ClearBufferingInfo();
+		}
+
+//		if (!hasShownHideAlert && hasURL && helixOcx.PlayState >= 2) {
+//			hasShownHideAlert = true;
+//			if (TVShell.IsOn)
+//			PanelManagerObj.CustomMessageBox("You are about to hide the Real Player. To show the player again, press the <b>Music/Video</b> key on your keyboard.",
+//											 "",
+//											 "Ok",
+//											 0,
+//											 ""); 
+//		}
+	}
+}
+
+function OnHide()
+{	
+	PanelManagerObj.Hide(window.name);
+}
+
+function OnAfterHide(name)
+{
+	if (name=='helixpanel') {
+		defaultImg.src = "msntv:/Images/1x1.gif";
+		fullScreenImg.src = "msntv:/Images/1x1.gif";
+		ShowAudioVisualization(false);
+		if (internalPlayState == kIntPsStoppedWithoutURL) {
+			setTimeout("ReleaseHelixControl()", 1);
+		}
+	}
+}
+
+function ReleaseHelixControl()
+{
+	hasURL = false;
+	ClearAll();
+	helixOcx.RealStop();
+	helixOcx.RealURL = "";
+	ResetButtons();
+}
+
+function ShowPlayState(state)
+{
+	var	stateStr = "";
+
+	switch(state) {
+		case kHelixPsStopped:
+			stateStr = "Stopped";
+			break;
+		case kHelixPsContacting:
+			stateStr = "Contacting";
+			break;
+		case kHelixPsBuffering:
+			stateStr = "Loading";
+			break;
+		case kHelixPsPlaying:
+			stateStr = "Playing";
+			break;
+		case kHelixPsSeeking:
+			stateStr = "Seeking";
+			break;
+		case kHelixPsPaused:
+			stateStr = "Paused";
+			break;
+	}
+
+	playState.innerText = stateStr;
+	playStateFullScreen.innerText = stateStr;
+}
+
+			
+function formatTime(time)
+{
+	if (time<10)
+		time = "0" + time;
+	return time;
+}
+
+function UpdatePositionTime()
+{
+	var position = helixOcx.CurrentPosition / 1000;
+	var duration = helixOcx.Duration / 1000;
+	
+	if (position == 0 && duration == 0)
+		return;
+
+	if (position <= duration) {
+		var min = formatTime(Math.max(Math.floor(position/60),0));
+		var sec = formatTime(Math.max(Math.floor(position%60),0));
+		positionTime.innerText=min+":"+sec;
+		if (position == duration) {
+			progress.percentComplete = 100;
+		} else
+			progress.percentComplete = Math.round(position/duration*100);
+	}
+
+	if (gDuration == 0 && duration != 0) {
+		UpdateDurationDisplay(helixOcx.Duration);
+	}
+
+	if (showDetailsForQA && NoMedia.style.visibility == "hidden") 
+	{
+		PacketsTotal.innerText = helixOcx.PacketsTotal;
+		PacketsReceived.innerText = helixOcx.PacketsReceived;
+		PacketsEarly.innerText = helixOcx.PacketsEarly;
+		PacketsMissing.innerText = helixOcx.PacketsMissing;
+		PacketsOutOfOrder.innerText = helixOcx.PacketsOutOfOrder;
+		PacketsLate.innerText = helixOcx.PacketsLate;
+		BandwidthAverage.innerText = helixOcx.BandwidthAverage;
+		BandwidthCurrent.innerText = helixOcx.BandwidthCurrent;
+		BufferingTimeElapsed.innerText = helixOcx.BufferingTimeElapsed;
+		BufferingTimeRemaining.innerText = helixOcx.BufferingTimeRemaining;
+		ConnectionBandwidth.innerText = helixOcx.ConnectionBandwidth;
+	}
+	ScreenSaver.UserActive();
+}
+
+function ClearAll()
+{
+	ClearInfo();
+	ClearBufferingInfo();
+	ShowAudioVisualization(false);
+	totalTime.innerText = "";
+	playState.innerText = "";
+}
+
+function ClearInfo()
+{
+	infoDiv.innerHTML = "<table id='infoTable' width=100% cellpadding=0 cellspacing=0>" +
+						"<tr><td style='padding:8px 0px 2px 0px; font-weight:bold; font-size:20px; color:#AFC0CC;'>Now playing</td></tr></table>";
+	infoDivScroller.MyDoScroll("scrollToStart");
+}
+
+function FilenameFromPath(path)
+{
+	var fileName = path.slice(Math.max(path.lastIndexOf('/')+1, path.lastIndexOf('\\')+1));
+
+	if (fileName) {
+		fileName = fileName.substr(0, fileName.lastIndexOf('.'));
+	}
+
+	return fileName;
+}
+
+function ShowInfo()
+{
+	ClearInfo();
+
+	var mpHasMultipleItems	= helixOcx.HasMultipleItems;
+	var mpPlaylistTitle		= null;
+	var mpClipTitle			= helixOcx.GetMediaInfoString(8);
+	var mpClipAuthor		= helixOcx.GetMediaInfoString(9);
+	var mpClipDescription	= helixOcx.GetMediaInfoString(12);
+
+	var artistStr			="Artist";
+	var albumStr			="Album";
+	
+	if (HasVideo()) {
+		var artistStr			="Author";
+		var albumStr			="Description";	
+	}
+
+	var outputStr = "<table id='infoTable' width=100% cellpadding=0 cellspacing=0>" +
+					"<tr><td style='padding:8px 0px 2px 0px; font-weight:bold; font-size:20px; color:#AFC0CC;'>Now Playing</td></tr>";
+
+	if (!mpClipTitle)
+	{
+		var mpSourceLink = helixOcx.SourceLink;
+		if (!mpSourceLink) {
+			mpSourceLink = helixOcx.FileName;
+		}
+		if (mpSourceLink) {	
+			mpClipTitle = FilenameFromPath(mpSourceLink);	
+		}
+	}
+
+	if (mpPlaylistTitle)
+	{
+		outputStr+="<tr><td><span style='padding:6px 0px 2px 0px; font-weight:bold; color:#AFC0CC'>" + utilities.EscapeHTML(mpPlaylistTitle) + "</span>";
+	}
+	if (!mpHasMultipleItems || helixOcx.PlayState != 0) {
+		if(mpClipTitle)
+		{
+			outputStr+="<tr><td><span style='font-weight:bold; color:#AFC0CC'>Title:</span>";
+			outputStr+="<tr><td><span id='clipTitle' class='breakWord' style='width:100px;'>" +  mpClipTitle + "</span>";
+		}
+		if(mpClipAuthor)
+		{
+			outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>" + artistStr + ":</span>";
+			outputStr+="<tr><td><span id='clipArtist' class='breakWord' style='width:100px;'>" + mpClipAuthor + "</span>";
+		}
+		if(mpClipDescription)
+		{
+			outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>" + albumStr + ":</span>";
+			outputStr+="<tr><td><span id='clipAlbum' class='breakWord' style='width:100px;'>" + mpClipDescription+ "</span>";
+		}
+	}
+	
+	if(showDetailsForQA && NoMedia.style.visibility == "hidden")
+	{
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>SourceLink:</span>";
+		outputStr+="<tr><td><span class='breakWord' style='width:100px;'>" + helixOcx.SourceLink+ "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>FileName:</span>";
+		outputStr+="<tr><td><span class='breakWord' style='width:100px;'>" + helixOcx.FileName+ "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>Height:</span>";
+		outputStr+="<tr><td><span class='breakWord' style='width:100px;'>" + helixOcx.ImageSourceHeight+ "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>Width:</span>";
+		outputStr+="<tr><td><span class='breakWord' style='width:100px;'>" + helixOcx.ImageSourceWidth+ "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>PktsTotal:</span>";
+		outputStr+="<tr><td><span id=PacketsTotal class='breakWord' style='width:100px;'>" + helixOcx.PacketsTotal + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>PktsReceived:</span>";
+		outputStr+="<tr><td><span id=PacketsReceived class='breakWord' style='width:100px;'>" + helixOcx.PacketsReceived + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>PktsEarly:</span>";
+		outputStr+="<tr><td><span id=PacketsEarly class='breakWord' style='width:100px;'>" + helixOcx.PacketsEarly + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>PktsMissing:</span>";
+		outputStr+="<tr><td><span id=PacketsMissing class='breakWord' style='width:100px;'>" + helixOcx.PacketsMissing + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>PktsOutOfOrder:</span>";
+		outputStr+="<tr><td><span id=PacketsOutOfOrder class='breakWord' style='width:100px;'>" + helixOcx.PacketsOutOfOrder + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>PktsLate:</span>";
+		outputStr+="<tr><td><span id=PacketsLate class='breakWord' style='width:100px;'>" + helixOcx.PacketsLate + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>BwAverage:</span>";
+		outputStr+="<tr><td><span id=BandwidthAverage class='breakWord' style='width:100px;'>" + helixOcx.BandwidthAverage + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>BwCurrent:</span>";
+		outputStr+="<tr><td><span id=BandwidthCurrent class='breakWord' style='width:100px;'>" + helixOcx.BandwidthCurrent + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>BuffTimeElapsed:</span>";
+		outputStr+="<tr><td><span id=BufferingTimeElapsed class='breakWord' style='width:100px;'>" + helixOcx.BufferingTimeElapsed + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>BuffTimeRemaining:</span>";
+		outputStr+="<tr><td><span id=BufferingTimeRemaining class='breakWord' style='width:100px;'>" + helixOcx.BufferingTimeRemaining + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>ConnBandwidth:</span>";
+		outputStr+="<tr><td><span id=ConnectionBandwidth class='breakWord' style='width:100px;'>" + helixOcx.ConnectionBandwidth + "</span>";
+	}
+		
+	outputStr+="</table>"	
+
+	infoDiv.innerHTML = outputStr;
+
+	// Adjust span widths
+	var	width = infoTable.clientWidth;
+	var spans = infoTable.all.tags("span");
+	var i;
+	for (i = 0; i < spans.length; i++) {
+		spans[i].style.pixelWidth = width;
+	}
+
+	infoDivScroller.MyDoScroll("scrollToStart");
+}
+
+function PlayStateChange(oldState,newState)
+{
+//	var HelixNames = new Array("kHelixPsStopped", "kHelixPsContacting", "kHelixPsBuffering", "kHelixPsPlaying", "kHelixPsSeeking", "kHelixPsPaused");
+//	var PSNames = new Array("kIntPsStoppedWithoutURL", "kIntPsStoppedWithURL", "kIntPsWaitForNewStream", "kIntPsWaitForValidPosition", "kIntPsPlaying", "kIntPsPaused", "kIntPsFastForward", "kIntPsRewind", "kIntPsWaitForBuffering");
+//	TVShell.Message("PlayStateChange from '" + HelixNames[oldState] + "' to '" + HelixNames[newState] + "'" + "  internalPlayState = " + PSNames[internalPlayState]);
+
+	if (internalPlayState == kIntPsStoppedWithoutURL || internalPlayState == kIntPsStoppedWithURL) {
+		newState = kHelixPsStopped;
+		startingImage.style.display = "none";
+		defaultImg.style.display = "inline";
+	} else if (internalPlayState == kIntPsWaitForNewStream || internalPlayState == kIntPsWaitForValidPosition) {
+		if (oldState == kHelixPsStopped) {
+			// This handles case where helix has just finished
+			// initializing and has put its window on top.
+			helixOcx.ShowDisplay = false;
+		}
+		if (newState != kHelixPsContacting) {
+			newState = kHelixPsBuffering;
+		}
+	} else if (internalPlayState == kIntPsPlaying) {
+		// no explicit handling needed
+	} else if (internalPlayState == kIntPsPaused) {
+		// force all cases to show Paused msg
+		if (newState != kHelixPsPaused) {
+			newState = kHelixPsPaused;
+		}
+	} else if (internalPlayState == kIntPsFastForward || internalPlayState == kIntPsRewind) {
+		// When seeking, the helix code sends multiple messages
+		// while doing the seek.  This gives a consistent display
+		if (newState != kHelixPsSeeking && newState != kHelixPsBuffering) {
+			newState = kHelixPsBuffering;
+		}
+	} else {
+		newState = kHelixPsContacting;
+	}
+
+	if (newState == kHelixPsStopped) {
+		helixOcx.ShowDisplay = false;
+		ShowAudioVisualization(false);
+		startingImage.style.display = "none";
+		defaultImg.style.display = "inline";
+	}
+
+	ShowPlayState(newState);
+}
+
+function UpdateDurationDisplay(duration)
+{
+	gDuration = duration;
+	var length = duration / 1000;
+	var min = formatTime(Math.max(Math.floor(length/60),0));
+	var sec = formatTime(Math.max(Math.round(length%60),0));
+	totalTime.innerText = min + ":" + sec;
+}
+
+function OnPositionChange(lPos, lLen)
+{
+	if (lPos > 0) {
+		if (internalPlayState == kIntPsWaitForValidPosition) {
+
+			// This is a workaround for a bug in a low level (UAM?)
+			// driver.  After an waveOutOpen(), some hardware gets
+			// reset.  This code causes the right values to be set
+			// so that the audio playback is at the right level.
+			// See the comment at line 532 in CDeviceControl.cpp.
+			var goodVol = mixer.DigitalVolume;
+			mixer.DigitalVolume = goodVol;
+
+			internalPlayState = kIntPsPlaying;
+			ShowPlayState(helixOcx.PlayState);
+			startingImage.style.display = "none";
+			defaultImg.style.display = "none";
+			if (HasVideo()) {
+				helixOcx.ShowDisplay = true;
+			} else {
+				ShowAudioVisualization(true);
+				helixOcx.ShowDisplay = false;
+			}
+			
+			if (lLen != gDuration)
+				UpdateDurationDisplay(lLen);
+
+			if (helixOcx.IsBroadcast) {
+				RewButton.style.visibility = "hidden";
+				FFButton.style.visibility = "hidden";
+				Rewind.removeAttribute('tabIndex');
+				Forward.removeAttribute('tabIndex');
+			} else {
+				RewButton.style.visibility = "visible";
+				FFButton.style.visibility = "visible";
+				Rewind.tabIndex = 0;
+				Forward.tabIndex = 0;
+			}
+			
+			if ( !IsHighSpeed() && !IsLocalFile(helixOcx.FileName) && helixOcx.BandwidthCurrent > 60*1000){
+				play_pause_video();
+				var errorDesc = "Since you are connected to the Internet over a phone line, video files like this one will look better if you choose a link with a lower connection speed, such as 56k.<br>"
+							+  "To return to the Web page and choose a lower connection speed, choose Go Back. To continue playing this file at " + Math.round((helixOcx.Bandwidth/1000)) + " k, choose Keep Playing.";
+				var result =  PanelManagerObj.CustomMessageBox(errorDesc,"Select lower connection speed.", "Go Back;Keep Playing", 0,"");
+				if (!result) {
+					stop_video();
+					PanelManagerObj.Hide('helixpanel');
+					PanelManagerObj.Item('main').GoBack();
+				} else {
+					play_pause_video();
+				}
+			}
+		}
+	}
+}
+
+function OnBuffering(flag, percentDone)
+{
+	if (percentDone == 100) {
+		if (internalPlayState == kIntPsFastForward || internalPlayState == kIntPsRewind) {
+			play_pause_video();
+		}
+	}
+}
+
+//function OnClipOpened(shortName, URL)
+//{
+//	TVShell.Message("OnClipOpened - shortName="+shortName+" URL="+URL);
+//}
+//
+//function OnPresentationOpened()
+//{
+//	TVShell.Message("OnPresentationOpened");
+//}
+//
+//function Disconnect(lResult)
+//{
+//	TVShell.Message("helix: Disconnect");
+//}
+
+
+//function OnClipClosed()
+//{
+//	TVShell.Message("OnClipClosed, calling EndOfStream");
+//	EndOfStream();
+//}
+
+function OnPresentationClosed()
+{
+//	TVShell.Message("OnPresentationClosed");
+	setTimeout("EndOfStream()", 1);
+}
+
+function OnPreFetchComplete()
+{
+//	TVShell.Message("helix: OnPreFetchComplete(), calling NewStream().");
+	setTimeout("NewStream()", 1);
+}
+
+
+var errorDesc;
+var hexRMACode;
+
+function OnErrorMessage(uServerity, uRMACode, uUserCoder, pUserString, pMoreInfoURL, pErrorString)
+{
+	hexRMACode = "0x";
+	
+	for(i=28 ; i>=0; i-=4) {
+		hexRMACode += ((uRMACode >> i) & 0xf).toString(16).toUpperCase();
+	}		
+
+	TVShell.Message("Sev: " + uServerity +
+				 " Rma: " + hexRMACode +
+				 " uC: " + uUserCoder +
+				 " uS: " + pUserString +
+				 " info: " + pMoreInfoURL +
+				 " str: " + pErrorString);
+
+	if (hexRMACode == "0x8004004c") {
+		errorDesc = "Remote Server timed out.";
+	} else if ((hexRMACode == "0x80004001") ||
+			   (hexRMACode == "0x80040044")) {
+		errorDesc = "Network issues.  Please try again.";
+	} else if (hexRMACode == "0x80040011") {
+		errorDesc = "Unsupported file format.";
+	} else if (hexRMACode == "0x80040008") {
+		errorDesc = "file does not exist.";
+	} else if (hexRMACode == "0x80040016") {
+		errorDesc = "Unsupported protocol.";
+	} else if (hexRMACode == "0x80040201") {
+		errorDesc = "Unsupported media encoding.";
+	} else {
+		errorDesc = "Cannot Play Content.";
+	}
+	setTimeout("delayedMsgBox(errorDesc, hexRMACode)", 1);
+}
+
+function delayedMsgBox(a, b)
+{
+	stop_video();
+	PanelManagerObj.CustomMessageBox(a, "Helix playback error", "Done", 0, b);
+}
+
+function ClearBufferingInfo()
+{
+	PlayButton.style.visibility="visible";
+	PauseButton.style.visibility="hidden";
+	clearInterval(positionIntervalID);
+    positionTime.innerText="00:00";
+	progress.percentComplete = 0;
+	PutDefaultFocus();
+	gDuration = 0;
+}
+
+function NewStream()
+{
+//	TVShell.Message("helix: NewStream  helixState = " + helixOcx.PlayState + "  internalState = " + internalPlayState);
+
+	internalPlayState = kIntPsWaitForValidPosition;
+	startingImage.style.display = "inline";
+	defaultImg.style.display = "none";
+
+	if (nowplayingNormal.style.visibility == "hidden") {
+		helixOcx.Center = false;			// the Center and MaintainAspect properties are mutually exclusive
+		helixOcx.MaintainAspect = true;
+	} else {
+		helixOcx.MaintainAspect = false;
+		helixOcx.Center = true;
+	}
+
+	helixOcx.Volume = 100;
+	helixOcx.RealPlay();
+
+	PutDefaultFocus();
+    positionTime.innerText="00:00";
+ 	progress.percentComplete = 0;
+
+	var duration = helixOcx.Duration;
+	if (duration != 0) {
+		UpdateDurationDisplay(duration);
+	} else if (helixOcx.IsBroadcast) {
+		totalTime.innerText = "Live";
+	} else {
+		gDuration = 0;
+		totalTime.innerText = "";
+	}
+
+	clearInterval(positionIntervalID);
+    positionIntervalID = setInterval("UpdatePositionTime()", positionInterval);
+	ShowInfo();
+}
+
+function EndOfStream()
+{
+//	TVShell.Message("helix: EndOfStream  state=" + helixOcx.PlayState + "  internalPlayState = " + internalPlayState);
+	
+	ClearBufferingInfo();
+	internalPlayState = kIntPsStoppedWithURL;
+	ShowPlayState(kHelixPsStopped);
+	startingImage.style.display = "none";
+	defaultImg.style.display = "inline";
+
+	if (PanelManagerObj.FocusedPanel.Name != 'helixpanel') {
+		setTimeout("ReleaseHelixControl()", 1);
+	} else if (nowplayingFullscreen.style.visibility == "visible") {
+		clearTimeout(ControlPanelTimeoutID);
+		if (ControlPanel.style.visibility == "hidden") {
+			ShowControlPanel();
+			PutDefaultFocus();
+		}
+	}
+}
+
+function ResetButtons()
+{	
+	vid.style.visibility = "visible";
+	Buttons.style.visibility = "visible";
+	buffering.style.visibility = "visible";
+	NoMedia.style.visibility = "hidden";
+
+	RewButton.style.visibility = "hidden";
+	FFButton.style.visibility = "hidden";
+	Rewind.removeAttribute('tabIndex');
+	Forward.removeAttribute('tabIndex');
+
+// On ALT-G, the following test fails
+	if (IsHighSpeed()) {
+		FullScreenButton.style.visibility = "visible";
+		HideButton.style.visibility = "visible";
+	}
+}
+
+function PopUphelixpanel()
+{
+	ClearAll();
+	ResetButtons();
+	PanelManagerObj.Show('helixpanel');
+}
+
+function switchSlashes( element ) {
+	var re = /\\/g; 
+    return element.replace(re, '/');
+}
+
+// Sometimes the URL starts with file:\path but this
+// is not an acceptable URL format for the helix code.
+// Change the URL to file://path.
+function FixFileUrl(url)
+{
+	var lowerCaseURL = url.toLowerCase();
+	if (lowerCaseURL.substr(0,6)=='file:\\' && lowerCaseURL.substr(0,7)!='file:\\\\') {
+		url = 'file:\\\\' + url.substr(6);
+	}
+	url = switchSlashes(url);
+	return url;
+}
+
+function IsHighSpeed()
+{
+	if (TVShell.ConnectionManager.WANAdapter.RXSpeed >= 100000)
+		return true;
+	else
+		return false;
+}
+function IsLocalFile(inURL)
+{
+	if (inURL.substr(0,5)=='file:' || inURL.substr(0,6)=='msntv:')
+		return true;
+	else 
+		return false;
+}
+function IsUnsupportedProtocol(inURL)
+{
+	if (inURL.substr(0,4) == 'pnm:')
+		return true;
+	else 
+		return false;
+}
+function IsStreamFile(inURL)
+{
+	var inUrlLength = inURL.length;
+	var extLength = StreamFileExtensions.length;
+	for (var i = 0; i < extLength; i++) {
+		if (inURL.substr(inUrlLength - StreamFileExtensions[i].length, inUrlLength) == StreamFileExtensions[i])
+			return true;
+		var tag = StreamFileExtensions[i] + '?';
+		if (inURL.indexOf(tag) > 0)
+			return true;
+	}
+	return false;	
+}
+
+function IsUnsupportedStreamFile(inURL)
+{
+	var inUrlLength = inURL.length;
+	var extLength = UnsupportedFileExtensions.length;
+	for (var i = 0; i < extLength; i++) {
+		if (inURL.substr(inUrlLength - UnsupportedFileExtensions[i].length, inUrlLength) == UnsupportedFileExtensions[i])
+			return true;
+		var tag = UnsupportedFileExtensions[i] + '?';
+		if (inURL.indexOf(tag) > 0)
+			return true;
+	}
+	return false;	
+}
+
+//function IsMediumFile(inURL)
+//{
+//	var inUrlLength = inURL.length;
+//	var extLength = MediumFileExtensions.length;
+//	for (var i = 0; i < extLength; i++) {
+//		if (inURL.substr(inUrlLength - MediumFileExtensions[i].length, inUrlLength) == MediumFileExtensions[i])
+//			return true;
+//		var tag = MediumFileExtensions[i]+'?';
+//		if (inURL.indexOf(tag) > 0)
+//			return true;
+//	}
+//	return false;	
+//}
+
+function OnURLCommon(theURL)
+{
+	var lowerCaseURL = theURL.toLowerCase();
+	globalMediumURL = theURL;
+	if (IsUnsupportedStreamFile(lowerCaseURL)) {
+		errorDesc = "Unsupported file format.";
+		hexRMACode == "0x8004FFF0";
+		setTimeout("delayedMsgBox(errorDesc, hexRMACode)", 1);
+	} else if (IsUnsupportedProtocol(lowerCaseURL)) {
+		errorDesc = "Unsupported transport protocol.";
+		hexRMACode == "0x8004FFF4";
+		setTimeout("delayedMsgBox(errorDesc, hexRMACode)", 1);
+	} else if (IsHighSpeed() || IsLocalFile(lowerCaseURL) || IsStreamFile(lowerCaseURL)) {
+		internalPlayState = kIntPsWaitForNewStream;
+		PopUphelixpanel();
+		hasURL = true;
+		setTimeout("helixOcx.RealURL = globalMediumURL;", 1);
+	} else {
+		setTimeout("PanelManagerObj.StartDownload(globalMediumURL);", 1);
+	}
+}
+
+function OnEmbeddedURL(inURL)
+{
+	OnURLCommon(inURL);
+}
+
+function OnMediumURL(name, inURL)
+{
+	if (name=='helixpanel') {
+		var url = FixFileUrl(inURL);
+		OnURLCommon(url);
+	}	
+}
+
+function OnhelixpanelPopup()
+{
+	PanelManagerObj.Show('helixpanel');
+}
+
+function ShowMainPanelWithURL(URL)
+{
+	PanelManagerObj.Show('main');
+	PanelManagerObj.Item('main').GotoURL(URL);
+}
+
+function OnPowerOff()
+{	
+	stop_video();
+	hasURL = false;
+	internalPlayState = kIntPsStoppedWithoutURL;
+	ReleaseHelixControl();
+}
+
+function OnDone()
+{	
+	if (hasURL) {
+   		stop_video();
+		hasURL = false;
+	}
+	internalPlayState = kIntPsStoppedWithoutURL;
+	setTimeout("ReleaseHelixControl()", 1);
+	PanelManagerObj.Hide(window.name);
+}
+
+function OnLoad()
+{
+	helixOcx.AutoRewind = false;
+	helixOcx.TransparentAtStart = true; 
+	helixOcx.Volume = 100;
+	PutDefaultFocus();
+}
+
+function OnUnload()
+{
+	stop_video();
+	setTimeout("ReleaseHelixControl()", 1);
+}
+
+function OnKeydown()
+{
+	var flavor = TVShell.SystemInfo.Flavor;
+	if (flavor != "release" && flavor != "ppe" && event.altKey && event.keyCode == "1".charCodeAt(0)) {
+		event.returnValue = false;
+		showDetailsForQA = showDetailsForQA ? false : true;
+		ShowInfo();
+		return;
+	}
+
+	// Alt-F to toggle normal and fullscreen
+	if (event.altKey && (event.keyCode == 70 || event.keyCode == 102)) {
+		if (nowplayingNormal.style.visibility == "visible")
+			show_fullscreen();
+		else
+			show_normalscreen();
+		event.returnValue = false;
+		return;
+	}
+
+	var isEscapeKey = (event.keyCode == 27) ? true : false;
+	if (nowplayingFullscreen.style.visibility == "visible") {
+		if (ControlPanel.style.visibility == "hidden") {
+			if (isEscapeKey) {
+				var alertPanel = PanelManager.Item("alert");
+				if (alertPanel && alertPanel.State == 0)
+					return;
+			}
+			if (IsNormalKeys(event.keyCode)) {
+				clearTimeout(ControlPanelTimeoutID);
+				ControlPanelTimeoutID = setTimeout(HideControlPanel, ControlPanelTimeout);
+				ShowControlPanel();
+				PutDefaultFocus();
+				event.returnValue = false;
+				return;
+			}
+		}
+		
+		clearTimeout(ControlPanelTimeoutID);
+		if (isEscapeKey) {
+			if (internalPlayState > kIntPsStoppedWithURL)
+				HideControlPanel();
+			event.returnValue = false;
+		} else {
+			ControlPanelTimeoutID = setTimeout(HideControlPanel, ControlPanelTimeout);
+		}
+	} else if (isEscapeKey) {
+		PanelManagerObj.Hide("helixpanel");
+	}
+}
+
+function IsNormalKeys(keyCode)
+{
+	if ((keyCode >= 48 && keyCode <= 57) ||
+		(keyCode >= 65 && keyCode <= 90) ||
+		(keyCode >= 97 && keyCode <= 122) ||
+		(keyCode >= 37 && keyCode <= 40) ||
+		 keyCode == 32 || keyCode == 27) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
+function HideControlPanel()
+{
+	helixOcx.SetWindowRect(0, 0, safeWidth, safeHeight);
+	ControlPanel.style.visibility = "hidden";
+	Buttons.style.visibility = "hidden";
+}
+
+function ShowControlPanel()
+{
+	helixOcx.SetWindowRect(0, 0, safeWidth, safeHeight - 61);
+	ControlPanel.style.visibility = "visible";
+	Buttons.style.visibility = "visible";
+}
+
+function OnMemoryStateChange(newState)
+{
+	// 3 - out of memory
+//	if (newState == 3 && internalPlayState > kIntPsStoppedWithURL ) {
+	if (newState == 3) {
+		TVShell.Message("helix: Out of Memory.  Current Helix state = " + helixOcx.PlayState + "  internate state = " + internalPlayState);
+		stop_video();
+		setTimeout("ReleaseHelixControl()", 1);
+	}
+}
+
+function ShowAudioVisualization(show)
+{
+	var		html = "";
+
+	if (show) {
+		html =
+			"<object classid=\"clsid:d27cdb6e-ae6d-11cf-96b8-444553540000\" tabindex=\"-10001\" width=\"320\" height=\"240\">" + 
+				"<param name=\"movie\" value=\"file:/web/wmp/assets/PanelPlayerVisualization.swf\" />" +
+				"<param name=\"quality\" value=\"high\" />" +
+				"<param name=\"bgcolor\" value=\"#000000\" />" +
+			"</object>";
+	}
+
+	audioVisualization.innerHTML = html;
+}
+
+Sink.AttachEvent(PanelManagerObj, "OnMediumURL", OnMediumURL);
+Sink.AttachEvent(PanelManagerObj, "OnBeforeShow", OnBeforeShow);
+Sink.AttachEvent(PanelManagerObj, "OnBeforeFirstShow", OnBeforeFirstShow);
+Sink.AttachEvent(PanelManagerObj, "OnBeforeHide", OnBeforeHide);
+Sink.AttachEvent(PanelManagerObj, "OnAfterHide", OnAfterHide);
+Sink.AttachEvent(TVShell, "OnMemoryStateChange", OnMemoryStateChange);
+Sink.AttachEvent(TVShell, "OnPowerOff", OnPowerOff);
+
+</script>
+
+</head>
+<body style="margin:0px; behavior:url(../HTC/wmppanelBG.htc);" onLoad="OnLoad();" onUnload="OnUnload();"onKeyDown="OnKeydown();">
+
+<div id="nowplayingNormal" style="visibility:visible;">
+	<table style="width:100%; height:100%;" cellspacing="0" cellpadding="0" ID="Table1">
+		<tr>
+			<td style="background-color:black;">
+				<table style="width:100%; height:100%;" cellspacing="0" cellpadding="0" ID="Table2">
+					<tr>
+						<td style="width:320px;"></td>
+						<td>
+							<div id="infoDivScroller">
+								<div id="infoDiv" style="width:100%;">
+								</div>
+							</div>
+						</td>
+					</tr>
+				</table>
+			</td>
+		</tr>
+		<tr>
+			<td style="height:46px; text-align:right;">
+				<msntv:CustomButton id="FullScreenButton" class="bottombarButton" style="visibility:hidden;" label="Full Screen" onclick="show_fullscreen();" />
+				<msntv:CustomButton id="HideButton" class="bottombarButton" style="visibility:hidden;" label="Hide" onclick="OnHide();" />
+				<msntv:CustomButton id="DoneButton" class="bottombarButton" label="Done" onclick="OnDone();" />
+				<div style="display:inline; margin-left:8px; width:58px; height:44px; behavior:url(#default#alphaImageLoader); src:url(Assets/PanelPlayerLogoHelix.png);"></div>
+			</td>
+		</tr>
+	</table>
+
+	<div id="buffering">
+		<table cellspacing="0" cellpadding="0" style="width:320; height:25;" ID="Table3">
+			<tr>
+				<td style="width:5px;"></td>
+				<td id="positionTime" style="width:45px; text-align:right; color:#AFC0CC;"></td>
+				<td style="width:5px;"></td>
+				<td style="width:80px;">
+					<msntv:progressbar id="progress" />
+				</td>
+				<td style="width:5px;"></td>
+				<td id="totalTime" style="width:45px; color:#AFC0CC;"></td>
+				<td style="width:5px;"></td>
+				<td id="playState" style="width:130px; text-align:right; color:#AFC0CC;"></td>
+			</tr>
+		</table>
+	</div>
+
+	<div id="vid">
+		<object id="helixOcx" tabIndex="-10001" classid="CLSID:CFCDAA03-8BE4-11cf-B84B-0020AFBBCCFA" VIEWASTEXT></object>
+	</div >
+
+<!--
+-->
+	<div id="NoMedia">
+		<span style="display:inline-block; padding-bottom:8px; font-weight:bold; font-size:20px; color:#AFC0CC;">Music and Video</span><br>
+		<span style="font-size:16px;">To use the Real player, choose the link below and select something to watch or listen to.</span>
+
+		<table style="width:100%; margin-top:8px;" cellspacing="0" cellpadding="0" ID="Table4">
+			<tr>
+				<td style="width:11px; vertical-align:top; padding-top:1px;">
+					<div style="width:7px; height:14px; behavior:url(#default#alphaImageLoader); src:url(../Images/BulletCustom.png);"></div>
+				</td>
+				<td style="padding-left:5;">
+					<a id="GoToMedia" tabIndex=0 style="color:#AFC0CC;"onclick="ShowMainPanelWithURL(TVShell.UserManager.CurrentUser.ServiceList('media::default').URL);">
+						Go to a Music and Video web site.
+					</a>
+				</td>
+			</tr>
+		</table>
+	</div>
+</div>
+
+<div id="nowplayingFullscreen">
+	<div id="ControlPanel" style="position:absolute; visibility:visible; bottom:0px; left:0px; width:100%; height:61px;">
+		<table style="position:absolute; z-index:-1; top:0px; left:0px; width:100%; height:100%;" cellpadding=0 cellspacing=0 ID="Table5">
+			<tr>
+				<td style="width:15px;"><img src="msntv:/Panels/Images/PanelPlayerSmallLeftSide.jpg"></td>
+				<td style="text-align:center; vertical-align:top; background-image:url(msntv:/Panels/Images/PanelPlayerSmallMiddleStretch.jpg)"><img id="fullScreenImg" src="msntv:/Panels/Images/PanelPlayerSmallBG.jpg"></td>
+				<td style="width:15px;"><img src="msntv:/Panels/Images/PanelPlayerSmallRightSide.jpg"></td>
+			</tr>
+		</table>
+		<div style="width:100%; height:100%; padding:8px 15px 7px 15px;">
+			<table cellpadding="0" cellspacing="0" width=100% height="46" ID="Table6">
+				<tr>
+					<td style="width:156px;">
+					</td>
+					<td id="playStateFullScreen" style="padding-left:10px; color:#AFC0CC;">
+						Playing
+					</td>
+					<td style="text-align:right;">					
+						<msntv:CustomButton label="Normal View" class="bottombarButton" id="NormalView" onClick="show_normalscreen();" />
+						<div style="display:inline; margin-left:8px; width:58px; height:44px; behavior:url(#default#alphaImageLoader); src:url(Assets/PanelPlayerLogoHelix.png);"></div>
+					</td>
+				</tr>
+			</table>
+		</div>
+	</div>
+</div>
+
+<div id="flash">
+	<div style="position:absolute; z-index:-1; top:0px; left:0px; width:320px; height:240px;"><img id="defaultImg" src="msntv:/Images/1x1.gif"></div>
+	<table style="width:320px; height:240px;" cellspacing="0" cellpadding="0" ID="Table7">
+		<tr>
+			<td align=center valign=center>
+				<div id="startingImage" style="display:none; width:91px; height:111px; behavior:url(#default#alphaImageLoader); src:url(Assets/PanelPlayerLogoReal.png);"></div><span ID="audioVisualization"></span>
+			</td>
+		</tr>
+	</table>
+</div>
+
+
+<map name="NavMap">						   
+    <area shape="RECT" coords="  0,5,  39,48" id="PlayPause" tabIndex=0 onClick="play_pause_video()">    
+    <area shape="RECT" coords=" 39,5,  78,48" id="Stop" tabIndex=0 onClick="stop_video()">   
+    <area shape="RECT" coords=" 78,5, 117,48" id="Rewind" onClick="rew_video()">    
+    <area shape="RECT" coords="118,5, 156,48" id="Forward" onClick="ff_video()">    
+</map>
+
+<div id="Buttons">
+	<img style="vertical-align:top" src="../Images/1x1.gif" useMap="#NavMap" style="width:156; height:46; border:none;">
+	<div id="PauseButton" style="visibility:visible; position:absolute; left:0px;   top:0px; behavior:url(#default#alphaImageLoader); src:url(../wmp/Assets/PanelPlayerControlPause.png);"></div>
+	<div id="PlayButton"  style="visibility:hidden;  position:absolute; left:0px;   top:0px; behavior:url(#default#alphaImageLoader); src:url(../wmp/Assets/PanelPlayerControlPlay.png);"></div>
+	<div id="StopButton"  style="visibility:visible; position:absolute; left:39px;  top:0px; behavior:url(#default#alphaImageLoader); src:url(../wmp/Assets/PanelPlayerControlStop.png);"></div>
+	<div id="RewButton"   style="visibility:hidden;  position:absolute; left:78px;  top:0px; behavior:url(#default#alphaImageLoader); src:url(../wmp/Assets/PanelPlayerControlREW.png);"></div>
+	<div id="FFButton"    style="visibility:hidden;  position:absolute; left:117px; top:0px; behavior:url(#default#alphaImageLoader); src:url(../wmp/Assets/PanelPlayerControlFF.png);"></div>
+</div>
+
+
+<!--
+	WMP events -- these are not supported.
+
+<script language=javascript event="ReadyStateChange(lReadyState)" for=helixOcx>
+	ReadyStateChange(lReadyState);
+</script>
+<script language=javascript event="PlayStateChange(oldState,newState)" for=helixOcx>
+	PlayStateChange(oldState,newState);
+</script>
+<script language=javascript event="PositionChange(dblOldPosition, dblNewPosition)" for=helixOcx>
+	PositionChange(dblOldPosition, dblNewPosition);
+</script>
+<script language=javascript event="NewStream()" for=helixOcx>
+	NewStream();
+</script>
+<script language=javascript event="EndOfStream(lResult)" for=helixOcx>
+	EndOfStream(lResult);
+</script>
+<script language=javascript event="Buffering(bStart)" for=helixOcx>
+	Buffering(bStart);
+</script>
+<script language=javascript event="Error()" for=helixOcx>
+	HandleError();
+</script>
+<script language=javascript event="Disconnect(lResult)" for=helixOcx>
+	Disconnect(lResult);
+</script>
+
+-->
+
+<!--
+	Unused Helix events
+
+<SCRIPT language=javascript event="onClipOpened(shortName, URL)" for=helixOcx>
+	OnClipOpened(shortName, URL)
+</SCRIPT>
+<SCRIPT language=javascript event="OnPresentationOpened()" for=helixOcx>
+	OnPresentationOpened()
+</SCRIPT>
+<SCRIPT language=javascript event="onClipClosed()" for=helixOcx>
+	OnClipClosed()
+</SCRIPT>
+-->
+
+<script language=javascript event="OnBuffering(flag, percentDone)" for=helixOcx>
+	OnBuffering(flag, percentDone);
+</script>
+<SCRIPT language=javascript event="OnPositionChange(lPos, lLen)" for=helixOcx>
+	OnPositionChange(lPos, lLen)
+</SCRIPT>
+<script language=javascript event="OnEmbeddedURL(inURL)" for=helixOcx>
+	OnEmbeddedURL(inURL);
+</script>
+<script language=javascript event="OnhelixpanelPopup()" for=helixOcx>
+	OnhelixpanelPopup();
+</script>
+
+<script language=javascript event="OnStateChange(lOldState, lNewState)" for=helixOcx>
+	PlayStateChange(lOldState, lNewState);
+</script>
+<SCRIPT language=javascript event="OnPresentationClosed()" for=helixOcx>
+	OnPresentationClosed()
+</SCRIPT>
+
+<SCRIPT language=javascript event="OnPreFetchComplete()" for=helixOcx>
+	OnPreFetchComplete()
+</SCRIPT>
+
+<SCRIPT language=javascript event="OnErrorMessage(uServerity, uRMACode, uUserCoder, pUserString, pMoreInfoURL, pErrorString)" for=helixOcx>
+	OnErrorMessage(uServerity, uRMACode, uUserCoder, pUserString, pMoreInfoURL, pErrorString)
+</SCRIPT>
+
+</body>
+</html>

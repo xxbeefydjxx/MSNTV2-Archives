@@ -1,0 +1,38 @@
+<html xmlns:msntv>
+<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+<head>
+<meta HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=iso-8859-1">
+<title>MSNTV OutOfMemory page</title>
+<link rel="StyleSheet" type="text/css" href="../CSS/Dialog.css">
+<script language="Javascript" src="../Javascript/TVShell.js"></SCRIPT>
+<script>
+	function FriendlyErrorTitle()
+	{
+		return "This page is too big";
+	}
+	
+  	function FriendlyErrorBody()
+	{
+		return "";
+	}
+    
+</script>
+</head>
+<BODY class=fullPage>
+	<div id="icon"></div>
+	<div id="title" class="header">
+		<SCRIPT>
+			document.write(FriendlyErrorTitle());
+		</SCRIPT>
+	</div>	
+	<div id="description" class="scroller">
+		<SCRIPT>
+		document.write(FriendlyErrorBody());
+		</SCRIPT>
+	</div>
+	<div id="buttonBar">
+		<msntv:CustomButton id=default label="Done" onClick="javascript:history.go(-1)" />
+		<script>document.all("default").focus();</script>
+	</div>
+</body> 
+</html>

@@ -1,0 +1,44 @@
+<html xmlns:msntv>
+<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="MSNTVPaneHelpHeading.htc">
+<?IMPORT namespace="msntv" implementation="../HTC/ScrollingDIV.htc">	<!-- Required for scrolling area -->
+
+<head>
+	<title>Supported printers</title>
+	<script language="Javascript" src="ServerPaneHelp.js"></script>
+	<link REL=StyleSheet TYPE="text/css" HREF="MSNTVPaneHelp.css">
+</head>
+<body>
+
+<!-- showScrollTop="true" displays gradient in text area -->
+<msntv:MSNTVPaneHelpHeading label="Help" label2="Supported printers" helpURL="MSNTV_ALTTOC_main.htm" showScrollTop="true" />
+
+<div id="scrollArea">
+	<span class="description">
+                To print pages that are displayed on your screen, you'll need to connect a compatible USB printer to your Internet & Media Player.
+                <p>
+		<p>
+                The following printers are recommended:
+		</p>
+		</p>
+        <ul>
+		<li>Epson Stylus C44UX, C64, C82, and C84</li>
+		<li>Epson Stylus Photo 825</li>
+                <li>Hewlett-Packard Deskjet 5150, 5550, 5650, and 6122</li>
+        </ul>
+                To see additional printers that are supported, choose a link:<br>
+                <span class="customBullet"><a id="printEpsonID" class="topicLink" href="javascript:goToPageAndPassNewOrigin('MSNTV_PROC_SINGLE_Offline_CompatPrintersEpson.htm');">Compatible Epson printers</a><br>
+                </span>
+                <span class="customBullet"><a id="printHPID" class="topicLink" href="javascript:goToPageAndPassNewOrigin('MSNTV_PROC_SINGLE_Offline_CompatPrintersHP.htm');">Compatible Hewlett-Packard printers</a>
+                </span>
+        </span>
+</div>
+
+<div id="sideBar">
+       <msntv:CustomButton onclick="javascript:ReturnToReferrer()" id="doneID" label="Done" />
+	<script>document.all("DoneID").focus();</script>
+
+</div>
+
+</body>
+</html>

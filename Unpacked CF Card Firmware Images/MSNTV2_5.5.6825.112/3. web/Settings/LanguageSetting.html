@@ -1,0 +1,223 @@
+<HTML xmlns:msntv>
+<?IMPORT namespace="msntv" implementation="../../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../../HTC/SettingsHeading.htc">
+<TITLE>System Info</TITLE>
+<SCRIPT LANGUAGE=Javascript SRC="../../Javascript/TVShell.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../../Javascript/LanguageCode.js"></SCRIPT>
+<script>
+var testdata=new Array()
+testdata[0]=1;
+testdata[1]=2
+
+
+
+
+var SystemInfo=TVShell.SystemInfo;
+
+function SetLocaleSetting(identifier)
+{
+	
+	SystemInfo.CurLang=identifier;
+	
+	SystemInfo.Save();
+    
+    var params="en-us";
+	if(identifier!=0x0409)
+	  params=GetIECode(identifier)+",en-us;q=0.5";
+	TVShell.ApplyLocaleSetting(identifier,GetCodePage(identifier),params,IsAddOn(identifier));
+	TVShell.RefreshFileProtocol();
+	TVShell.FireOnLocaleChanged();
+}
+
+function IsAddOn(id)
+{
+  for(i=0;i<builtinlangs.length;i++)
+     if(builtinlangs[i]==id)
+	  return false;
+  for(i=0;i<addonlangs.length;i++)
+     if(addonlangs[i]==id)
+	  return true;
+  return false;	   
+}
+
+var builtinlangs=new Array();
+var addonlangs=new Array();
+var langSelected=SystemInfo.CurLang;
+
+
+
+//SystemInfo.BuiltInLangs="0404 0409"
+//SystemInfo.AddOnLangs="0407"
+
+var BuiltInLangs=SystemInfo.BuiltInLangs;
+var AddOnLangs=SystemInfo.AddOnLangs;
+
+if(SystemInfo.MUIEnable==1 && (BuiltInLangs || AddOnLangs))
+{
+   builtinlangs=ParseLangs(BuiltInLangs);
+   addonlangs=ParseLangs(AddOnLangs)
+}
+
+//   builtinlangs[0]=0x0409;
+//   builtinlangs[1]=0x0407;
+
+//   addonlangs[0]=0x040c;
+//   addonlangs[1]=0x0410;
+
+
+function  SelectLang(code)
+{
+   langSelected=code;
+}
+var MpOpenStateCLOSED = 0;
+var MpStopped = 0;		//Playback is stopped
+var MpClosed = 6;		//Stream is not open
+var videoie;
+
+function IsMediaPlaying()
+{
+	if (videoie.OpenState != MpOpenStateCLOSED || (videoie.PlayState != MpStopped && videoie.PlayState != MpClosed))
+		return true;
+	else
+		return false;
+
+}
+
+function Save()
+{
+	var pm=TVShell.PanelManager
+	var panel;
+	
+
+	if((panel=pm.Item("mediapanel")))
+	{
+
+	    if((videoie=panel.Document.videoie) && IsMediaPlaying())
+		{
+			var result=pm.CustomMessageBox("Changing language setting will stop windows media player? Do you want to  continue?", "", "Yes;No", 1, "", false, MGX_ICON_WARNING);
+			
+			if(result!=0)
+			   return;
+		}
+	}
+
+	if(SystemInfo.CurLang!=langSelected)
+	{
+		SetLocaleSetting(langSelected);
+
+
+		if((panel=pm.Item("gotopanel")))
+		{    
+			TVShell.Message("gotopanel")
+			panel.Document.location.reload(true)
+		}
+		if((panel=pm.Item("menupanel")))
+		{    
+			TVShell.Message("menupanel")
+			panel.Document.location.reload(true)
+		}
+		if((panel=pm.Item("mediapanel")))
+		{    
+			TVShell.Message("mediapanel")
+			panel.Document.location.reload(true)
+		}
+		if((panel=pm.Item("printsettings")))
+		{    
+			TVShell.Message("printsettings")
+			panel.Document.location.reload(true) 
+		} 
+		if((panel=pm.Item("signinpanel")))
+		{    
+			TVShell.Message("signinpanel")
+			panel.Document.location.reload(true)  
+		}
+
+	}
+	
+	pm.AnimationMessageBox("Your changes have been saved.", "msntv:/Panels/Images/TaskCompleted.gif", "Task_Complete", 3000);
+    
+				  
+	history.go(-1);
+}
+	    
+function BuildLangOptionTable()
+{
+   var htmlstr="<table><tr><td colspan=2 height=25>Please select the language and then choose <em>Save</em></td><tr>"
+   var i;
+   var count=0
+
+   for(i=0;i<builtinlangs.length;i++)
+   {
+        
+        var Language=GetLanguage(builtinlangs[i])
+		if(Language)
+		{	count +=1;
+			htmlstr +=" <tr><td><input type=radio id=lang"+i+" name=langoption onclick=\"SelectLang("+builtinlangs[i]+")\"";
+			if(builtinlangs[i]==langSelected)
+			  htmlstr +=" checked ";
+			htmlstr += "></td><td>"+Language+"</td></tr>";
+		}
+   }
+   for(i=0;i<addonlangs.length;i++)
+   {
+        var Language=GetLanguage(addonlangs[i])
+		if(Language)
+		{	count +=1;
+			htmlstr +=" <tr><td><input type=radio id=lang"+i+" name=langoption onclick=\"SelectLang("+addonlangs[i]+")\"";
+			if(addonlangs[i]==langSelected)
+			  htmlstr +=" checked ";
+			htmlstr += "></td><td>"+Language+"</td></tr>";
+		}
+   }
+   
+   htmlstr +="</table>";
+
+   if(count>1)
+		return htmlstr;
+   else
+        return "";
+}
+
+ 
+
+</script>
+<LINK REL="StyleSheet" TYPE="text/css" HREF="../../CSS/Settings.css">
+</HEAD>
+<BODY>
+	<msntv:SettingsHeading label="Language Setting" />
+
+	<DIV id=buttonBar>
+		<msntv:CustomButton class=buttonBarButton id=SaveButton xstyle="display:none" onclick="Save()" label="Save" />
+		<msntv:CustomButton href="javascript:history.length > 0 ? history.go(-1) : TVShell.PowerOff()" class=buttonBarButton id=Done label="Done" />
+		<script>document.all("Done").focus();</script>
+	</DIV>
+
+	<DIV id=nonScrollArea>
+		<br>
+		<TABLE class=controlTable>
+
+<script>
+	var SystemInfo = TVShell.SystemInfo;
+	var langHTML="<TR><TD> System Language:<TD ID=SysLang ALIGN=LEFT> \
+		<TR><TD >Current Language:<TD ID=CurLang ALIGN=LEFT>"
+
+		document.write(langHTML);
+	    document.all.SysLang.innerText=GetLanguage(SystemInfo.SysLang);
+	    document.all.CurLang.innerText=GetLanguage(SystemInfo.CurLang);
+</script>
+ 		</TABLE>
+<script>
+if((builtinlangs.length+addonlangs.length)>1)
+{
+		var data=BuildLangOptionTable()
+        if(data)
+		  document.all.SaveButton.style.display="inline-block";
+		document.write(data);
+}
+
+	  
+</script>
+
+	</DIV>
+	
+</BODY>

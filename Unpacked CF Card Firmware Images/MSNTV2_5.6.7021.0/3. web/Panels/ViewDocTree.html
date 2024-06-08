@@ -1,0 +1,173 @@
+<html xmlns:msntv>
+<?import namespace="msntv" implementation="../HTC/CustomButton.htc">
+<head>
+<meta http-equiv="Content-Language" content="en-us">
+
+<title>Option Panel</title>
+
+<link rel=StyleSheet type="text/css" href="../CSS/Panel.css">
+<script  src="../Javascript/TVShell.js"></script>
+<script  src="../Javascript/PanelImpl.js"></script>
+<script>
+	var utilities = TVShell.Utilities;
+	var PanelManager = TVShell.PanelManager;
+	var Sink = new ActiveXObject("MSNTV.MultipleEventSink");
+
+	function BuildMenu()
+	{
+		var menu = document.all.panelName.options;
+
+		// Remove the current menu
+		while (menu.length > 0)
+			menu.remove(0);
+
+		// Add new menu items
+		for (i = 0; i < TVShell.PanelManager.Count; i++) {
+			var optionitem = document.createElement("OPTION");
+			optionitem.value = TVShell.PanelManager.Item(i).Name;
+			optionitem.text = TVShell.PanelManager.Item(i).Name;
+			menu.add(optionitem);
+		}
+	}
+	
+	function OnBeforeShow(name)
+	{
+		if (name == "viewdocpanel") {
+			BuildMenu();
+			panelName.value = "main";
+			ViewDocTree(PanelManager.Item("main").document,sourcetext);
+			window.scrollTo(0, 0);
+		}
+	}
+
+	function OnAfterHide(name)
+	{
+		if (name == "viewdocpanel") {
+			document.body.innerHTML = "";
+		}
+	}
+
+	function ShowHideChildren(parent)
+	{
+		var anchor = parent;
+		var makeVisible;
+		
+		while (parent.tagName != "TD")
+			parent = parent.parentElement;
+		
+		for (var i = parent.children.length-1; i >= 0; --i) {
+			var child = parent.children[i];
+			if (child.tagName == "TABLE")
+				if (child.currentStyle.display == "block") {
+					child.style.display = "none";
+					makeVisible = false;
+				}
+				else if (child.currentStyle.display == "none") {
+					child.style.display = "block";
+					makeVisible = true;
+				}
+		}
+
+		if (makeVisible == true)
+			anchor.innerText = "-";
+		else if (makeVisible == false)
+			anchor.innerText = "+";
+
+	//	parent.scrollIntoView(true);
+	}
+
+	function ViewDocTree(sourceDoc, destination)
+	{
+		var intParents = 0;
+		var intIndent = 0;
+		var sourceBody = sourceDoc.body;
+		// strStruct stores the HTML string that
+		// will represent the document.
+		var strStruct = new Array();
+		var ind = 0;
+		strStruct[ind++] = //"<HTML><TITLE>Document Tree</TITLE><BODY style='background-color:#aaaaaa'>" +
+			"<TABLE BORDER=0 CELLPADDING=5><TR>" +
+			"<TD style='font-size:8pt; color:#336699; border:2px solid black; padding:5px;'>BODY" +
+			" <font color=#666699>(l:" + sourceBody.offsetLeft + ", t:" + sourceBody.offsetTop + ", w:" + sourceBody.offsetWidth + ", sw:" + sourceBody.scrollWidth + ", h:" + sourceBody.offsetHeight + ", sh:" + sourceBody.scrollHeight + ")</font>";
+		var elParent;
+		var curElem;
+		// Walk through every element in the document.
+		for (var intLoop = 0; intLoop < sourceBody.all.length;
+			  intLoop++) {
+			curElem = sourceBody.all[intLoop];
+			if (curElem.tagName == "!")
+				continue;
+				
+			elParent = curElem;
+			// Determine depth of the element.
+			while (elParent.tagName != "HTML") {
+			  intParents++;
+			  elParent = elParent.parentElement;
+			}
+			// Nest or close nesting based on new depth.
+			if (intParents > intIndent)
+			  strStruct[ind++] =
+				 "<TABLE CELLPADDING='0' BORDER='0' CELLSPACING='0' style='border: 0px solid black; '><TR>";
+			else if (intParents < intIndent) { 
+			  for (var intClose = intParents;
+					intClose < intIndent; intClose++)
+				 strStruct[ind++] = "</TABLE>";
+			}
+			intIndent = intParents;
+			intParents = 0;
+			strStruct[ind++] = "</TR><TR><TD style='font-size:8pt; color:#336699; border-top:1px solid black; border-left: 1px solid black; border-right: 1px solid silver; border-bottom: 1px solid silver; padding:5px;" + (curElem == sourceDoc.activeElement ? "background-color:yellow;" : "") + "'>" +
+				(curElem.children.length > 0 ? "<a onClick='ShowHideChildren(this)' style='font-family:monospace;font-weight:bold'>-</a>" : "") +
+			  curElem.tagName;
+			  
+			//if (curElem.name || curElem.id)
+			//	strStruct += " <font color=#6600FF>" + (curElem.name ? curElem.name : curElem.id) + "</font>";
+			if (curElem.id)
+				strStruct[ind++] = " <font color=#3300FF>ID=" + curElem.id + "</font>";
+				
+			if (curElem.name)
+				strStruct[ind++] = " <font color=#330099>NAME=" + curElem.name + "</font>";
+
+			var fChild = curElem.firstChild;
+			if (fChild && fChild.nodeType == 3 /*text node*/ && fChild.data != " " ) {
+		//	if (curElem.children.length == 0 && curElem.innerText != "" && curElem.innerText != " ") {
+				strStruct[ind++] = ' <font color=#336633>"' + fChild.data.substr(0, 20);
+				if (fChild.data.length > 20)
+					strStruct[ind++] = '...';
+				strStruct[ind++] = '"</font>';
+			}
+
+			if (curElem.src && curElem.src != "")
+				strStruct[ind++] = ' <font color=#336633>"' + curElem.src.substr(curElem.src.lastIndexOf("/")+1) + '"</font>';
+
+			if (curElem.tagName != "SCRIPT" && curElem.currentStyle.display != "none")
+				strStruct[ind++] = " <font color=#666699>(l:" + curElem.offsetLeft + ", t:" + curElem.offsetTop + ", w:" + curElem.offsetWidth + ", h:" + curElem.offsetHeight + ", z:" + curElem.style.zIndex + ")</font>";
+		}
+		
+		// Close any remaining scopes.
+		for (var intClose = intParents; intClose < intIndent;
+			  intClose++)
+		   strStruct[ind++] = "</TD></TR></TABLE>";
+		strStruct[ind++] = "</BODY></HTML>";
+		   // Output the new document in a new window.
+		// var w = window.open("", "tree");
+		//destination.style.backgroundColor = "#dddddd";
+		destination.innerHTML = strStruct.join(" ");
+	}
+
+
+	Sink.AttachEvent(PanelManager, "OnBeforeShow", OnBeforeShow);
+	Sink.AttachEvent(PanelManager, "OnAfterHide",  OnAfterHide);
+</script>
+
+</head>
+
+<body style="behavior:none;background-color:#dddddd;" onload="OnBeforeShow('viewdocpanel');">
+Panel:
+<SELECT id=panelName onchange="ViewDocTree(PanelManager.Item(document.all.panelName.value).document, sourcetext)";>
+</SELECT>
+<BR/><BR/>
+<PRE id="sourcetext" style="font-face:highway; font-size:16px;background-color:white;">
+<center><font color=red></font>Please wait while retrieving document tree...</center>
+</PRE>
+</body>
+</html>

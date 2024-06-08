@@ -1,0 +1,150 @@
+<HTML xmlns:msntv>
+<HEAD>
+<?IMPORT namespace="msntv" implementation="msntv:/HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="msntv:/HTC/SettingsHeading.htc">
+<TITLE>Slow Narrowband Connection</TITLE>
+<LINK REL=StyleSheet TYPE="text/css" HREF="msntv:/CSS/Settings.css">
+<STYLE>
+.title
+{
+	font-size:20px;
+	font-weight:bold;
+}
+</STYLE>
+<SCRIPT LANGUAGE=Javascript SRC="msntv:/Javascript/TVShell.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="msntv:/Javascript/ConnectionManager.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript src="../Javascript/parameters.js"></SCRIPT>
+</HEAD>
+<BODY>
+<SCRIPT>
+var FromConnectionHistory = parameters["FromConnectionHistory"] == "true";
+var FromHelp = parameters["FromHelp"] == "true";
+var BaudRateThresholdLow = GetNarrowbandBaudrateThresholdLow();
+var BaudRateThresholdMedium = GetNarrowbandBaudrateThresholdMedium();
+var BaudRateThresholdHigh = GetNarrowbandBaudrateThresholdHigh();
+var RXThreshold;
+var RXRate;
+
+if (FromConnectionHistory) {
+	RXRate = parseInt(parameters["BaudRate"]);
+} else {
+	RXRate = parseInt(GetWanRxRate(TVShell.ConnectionManager.ModemAdapter.Settings.TX_RXRates));
+}
+
+if (RXRate <= BaudRateThresholdLow) {
+	RXThreshold = BaudRateThresholdLow;
+} else if(RXRate <= BaudRateThresholdMedium) {
+	RXThreshold = BaudRateThresholdMedium;
+} else if(RXRate <= BaudRateThresholdHigh) {
+	RXThreshold = BaudRateThresholdHigh;
+} else {
+	RXThreshold = RXRate;
+}
+
+function GoBack()
+{
+	if (FromConnectionHistory || FromHelp) {
+		history.go(-1);
+	} else {
+		TVShell.PanelManager.Hide("popuppanel");
+	}
+}
+</SCRIPT>
+<msntv:SettingsHeading label="Slow Dial-up Connection" showScrollTop />
+
+<DIV id=sideBar>
+	<msntv:CustomButton onclick="GoBack()" class=sideBarButton id="default" label="Continue" />
+	<script>
+		document.all["default"].focus();
+
+		if (FromConnectionHistory || FromHelp) {
+			document.all["default"].label = "Done";
+		}
+	</script>
+</DIV>
+
+<DIV id=scrollArea typeToScroll="true">
+<SCRIPT>
+	if (!FromHelp) {
+		document.write("<P>We are displaying these tips because your connection speed is less than or equal to <EM>" + RXThreshold + 
+		" baud</EM>.  This is relatively slow, as " + ServiceShortName + " users typically connect at 33600 baud or faster.");
+	}
+</SCRIPT>
+<P>You may be able to improve your dial-up connection speed by trying one or more of the suggestions below.  
+You can return to these tips at any time by choosing <EM>Help</EM> from the Sign-in page and choosing <EM>Improving slow dial-up connections</EM>.</P>
+<P>Select <EM><SCRIPT>if (FromConnectionHistory || FromHelp) {document.write("Done")} else {document.write("Continue")};</SCRIPT></EM> 
+when you have finished reviewing these tips.</P>
+<DIV class=title>Check your phone line and equipment</DIV>
+<DIV class=description>Listen for static or noise on the phone line.  Try the following and see if the static is eliminated:
+<P></P>
+<UL>
+<LI>Make sure your phone cable is snapped securely into the back of the unit and the wall jack.
+<LI>If you use a phone splitter, remove it and plug your <SCRIPT>document.write(ProductShortName)</SCRIPT> directly into the phone wall jack.
+<LI>Disconnect your answering machine, second phone, or other devices that share the phone line.
+<LI>Try replacing your phone cord.
+</UL>
+After doing each step, listen for static.  If the above tips do not help and you still hear static on the line, 
+contact your phone company and have them perform a <I>frequency sweep and general line test</I>.</P>
+</DIV>
+
+<DIV class=title>Check your connection speed</DIV>
+<DIV class=description>
+With Connection History, you can look at your recent connection rates and then try to improve your connection speed.
+<P></P>
+<UL>
+<LI>From the Sign-in page, press the <EM>Favs</EM> key on your keyboard.  The System Info page appears.
+<LI>Choose <EM>Connection History</EM>. You’ll see a list that shows what happened when your player dialed 
+<SCRIPT>document.write(ServiceShortName)</SCRIPT>; the date 
+and time you connected (or attempted to connect), the “Rate” (connection speed), and the access number that was dialed.
+<LI>For even more information (such as errors that occurred), choose the blue code number to the left of a Connection History 
+listing to view error messages and additional troubleshooting steps.
+</UL>
+<P>If your connection rates are consistently lower than average, you should choose more access numbers, as described below.</P>
+</DIV>
+
+<DIV class=title>Choose the best access numbers</DIV>
+<DIV class=description>
+<P>In most cases, you'll get the fastest connection speed if you choose all the local numbers on 
+the Access Numbers page.</P>
+<P><EM>Note</EM>: Keep in mind that 
+some access numbers might result in long-distance charges on your phone bill, even if the number is in your area code. 
+Check with your phone company to make sure the numbers you’ve chosen are local calls.</P>
+<P>If there are no additional numbers to choose from, you can scroll to the bottom of the page and choose 
+<EM>Get more access numbers</EM>.</P>
+<P><EM>Tip:</EM> In general, the access numbers at the top of the list will provide the 
+fastest connection rate.</P>
+<P>To select access numbers:
+<UL>
+<LI>Choose <EM>Settings</EM> from the Sign-in page.
+<LI>Choose <EM>Choose connection settings</EM>.
+<LI>Choose <EM>MSN TV access numbers</EM>, then choose <EM>Continue</EM>, The Access Numbers page appears.
+</UL>
+</P>
+<P>The Access Numbers page gives you a few ways to try and improve your connection rate:
+<UL>
+<LI>If your Connection History shows that a particular number is connecting at a slow “Rate,” you can deselect that number 
+(remove the checkmark) on this page.
+<LI>To increase your chances of a faster connection rate, you can select additional local numbers from the list.
+<LI>Choose <EM>Connect</EM>.
+</UL>
+</P>
+<P>To determine whether these tips improved your 
+connection speed, you can check your recent connection rates in Connection History (the most recent connections are 
+at the top of the list.)</P>
+<P>If the tips did not improve your connection speed, contact your phone company and have them perform a 
+<I>frequency sweep and general line test</I>.</P>
+</DIV>
+<DIV class=title>Other suggestions</DIV>
+<DIV class=description>
+<P>If you try these tips and still experience slow connection rates, you might want to consider using a broadband
+connection (DSL or cable modem), which will provide enhanced <SCRIPT>document.write(ServiceShortName)</SCRIPT> 
+service.  Check with your phone company or
+cable provider to see if they offer broadband services.</P>
+<P><EM>Note</EM>:  Your phone company or cable provider 
+will bill you for broadband equipment and services.  You will need to pay these fees in addition to your 
+<SCRIPT>document.write(ServiceShortName)</SCRIPT> subscription.
+</P>
+</DIV>
+</DIV>
+</BODY>
+</HTML>

@@ -1,0 +1,253 @@
+<html xmlns:msntv>
+<?import namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../HTC/PhotoHeading.htc">
+<head>
+	<title>Photo Save Photos</title>	
+	<link rel=StyleSheet type="text/css" href="../css/Photo.css">
+	<link rel=StyleSheet type="text/css" href="../css/Base.css">
+<style>	
+
+		#overview
+		{
+			padding-top: 10px;
+			padding-bottom: 5px;
+		}
+
+		.item
+		{
+			font-family: Segoe TV;
+			font: 18px bold; 
+			color: #1D1D1D;
+		}	
+		.itemDescription
+		{
+			font-family: Segoe TV;
+			font: 18px bold; 
+			color:#444444;
+		}	
+		
+</style>
+
+<script LANGUAGE=Javascript SRC="msntv:/Javascript/TVShell.js"></script>
+<script LANGUAGE=Javascript SRC="msntv:/Javascript/ProgressPanel.js"></script>
+<script LANGUAGE=Javascript SRC="msntv:/Photo/PhotoSOAP.js"></script>
+
+<script>
+	var albumTitle="";
+	var albumId="";
+	var albumSharingLevel="";
+	function GetSpacePermission()
+	{
+		if(!OnlineStorageDevice){
+			alert("MSNTV is experiencing technical difficulties.  Please try again later.");
+			return;
+		}
+		//Get the album name and album id from URL
+		var query = window.location.search;
+		if (query.substring(0, 1) == '?') {
+			query = query.substring(1);
+		 }
+		 
+		 var data = query.split(',');
+		 for (i = 0; (i < data.length); i++) {
+			data[i] = unescape(data[i]);
+		}
+		albumId = data[0];
+		albumTitle = data[1];
+		albumSharingLevel = data[2];
+		
+
+		 //Get the permission for this album
+//		 var permission = OnlineStorageDevice.GetAlbumPermission(albumId);
+		 //Show existing permission settings ( Priavate or Shared(Messenger) or Pubic)
+		for(var i = 0; i<3; i++)
+		{
+			spacePermissions[i].checked = (spacePermissions[i].value == albumSharingLevel) ? true : false;
+		}
+		
+	}
+	function init()
+	{
+		document.all.Heading.label = "Set Permissions for '" + albumTitle + "'";
+	}
+	
+	var permission = "";
+	function SetSpacePermission()
+	{
+		if(gAbort)
+			return;
+					
+		for(var i = 0; i<3; i++)
+		{
+			if(spacePermissions[i].checked)	
+			{
+				permission = spacePermissions[i].value;
+				break;
+			}
+		}
+		
+		if(!permission || permission=="")
+		{
+			HideProgressPanel();
+			alert("Please choose one of the permission settings and select Continue.");
+			return;
+		}		
+		// construct the api url
+		var g_CID_HEX = TVShell.LoginManager.IDCRLGetCID( TVShell.LoginManager.User);
+		var g_CID_DEC = TVShell.Utilities.LLongToDecimalString( g_CID_HEX );
+		//Api.live-tst.net
+		var skyApiServer = TVShell.ActiveServiceList("Skydrive::ApiServer");
+		
+		var url = "http://cid-" + g_CID_HEX + ".users."+ skyApiServer.URL +"/Users(" + g_CID_DEC + ")/Files/Folders('" +albumId+"')/"; 
+
+		// Create the xml string for setting the new permission.
+		var skyReqBase		="<?xml version=\"1.0\" encoding=\"utf-8\"?><entry xmlns:live=\"http://api.live.com/schemas\" xmlns=\"http://www.w3.org/2005/Atom\" >";
+		var skyAction		="";
+		var skyReqBody		="";
+		var skyReqBodyPUT	="";
+		var skyReqBodyPOST	="";
+		
+		skyReqBodyPUT = skyReqBase;
+		skyReqBodyPUT += "<title>" + albumTitle + "</title>";
+		skyReqBodyPUT += "<live:type>Library</live:type>";
+		if (permission == "Shared") //If the permission is of Messenger (Shared - in sky api terms) then first convert to Private album
+			skyReqBodyPUT += "<live:sharinglevel>Private</live:sharinglevel>";
+		else
+			skyReqBodyPUT += "<live:sharinglevel>" + permission + "</live:sharinglevel>";
+		skyReqBodyPUT += "<live:category>Photos</live:category>";
+		skyReqBodyPUT += "</entry>";
+		
+		skyReqBody = skyReqBodyPUT;
+		skyAction = "PUT";
+		
+		if (permission == "Shared"){
+			// To make a messenger type permission first convert the album to Private
+			CleanupXMLHTTPRequest();
+			gXMLHttpRequest = SkyFolderAction(skyAction, url, false, albumId, skyReqBody, HandleSetSpacePermission);
+			if (!gXMLHttpRequest || gXMLHttpRequest.status != 200){
+				StopSOAPProgress();
+				TVShell.Message("Failed while setting permission to messeger type");
+				alert("MSNTV is experiencing technical difficulties.  Please try again later.");
+				return;
+			}
+			// Now convert this to a Messenger (Shared) permission  by doing a POST.
+			skyReqBodyPOST = skyReqBase;
+			skyReqBodyPOST += "<live:includeExtended>false</live:includeExtended>";
+			skyReqBodyPOST += "<live:permissionType>livenetwork</live:permissionType>";
+			skyReqBodyPOST += "</entry>";
+			
+			skyReqBody = skyReqBodyPOST;
+			skyAction = "POST";
+			url += "permissions";
+		}
+
+		SetProgressPercent(70);			
+		CleanupXMLHTTPRequest();
+			
+		gXMLHttpRequest = SkyFolderAction(skyAction, url, gASYNC, albumId, skyReqBody, HandleSetSpacePermission);		
+	}
+	
+	function HandleSetSpacePermission(httpRequest)
+	{
+		if(gAbort)
+			return;
+		
+		// successfully set the permission
+		//OnlineStorageDevice.Property("Permission") = permission;
+		
+		// go to the online space
+		HideProgressPanel();
+		var msg = "You've successfully set permissions for your online album. ";
+		PanelManager.AnimationMessageBox(msg, "msntv:/Panels/Images/TaskCompleted.gif", "Task_Complete", 2000);	
+		setTimeout(OnShareSpaceComplete, 1000);	
+	}
+	
+	function OnShareSpaceComplete()
+	{
+		PanelManager.Item("main").NoBackToMe=true;
+		history.go(-1);
+	}
+	
+	function OnContinue()
+	{
+		gAbort = false;
+		SetProgressStopFunction( StopSOAPProgress);		
+		SetProgressText("Setting permissions, please wait ...");
+		ShowProgressPanel();
+		SetProgressPercent(10);
+		
+		// Set permissions
+		SetSpacePermission();
+	}
+	
+	function OnCancel()
+	{
+		history.go(-1);
+	}
+	
+	function OnLoad()
+	{
+		// Get permissions
+		GetSpacePermission();
+	}
+		
+	function OnUnload()
+	{
+		HideProgressPanel();
+		CleanupXMLHTTPRequest();
+	}
+</script>
+</head>
+<body topmargin=0 leftmargin=0 rightmargin=0 bottommargin=0 onload="OnLoad();" onunload="OnUnload();">
+
+		<msntv:PhotoHeading id=Heading label="Set Permissions"/>
+	
+		<DIV id=sideBar>
+			<table cellpadding=0 cellspacing=0 width=100% align=center ID="Table1" >
+				<tr id="ContinueRow" style='display:block;'>
+					<td height=30 ><msntv:CustomButton onclick="OnContinue();" class=sideBarButton id="ContinueButton" label="Continue" /></td>
+				</tr>
+				<tr>
+					<td height=30 ><msntv:CustomButton onclick="OnCancel();" class=sideBarButton id="CancelButton" label="Cancel" /></td>
+				</tr>
+				<tr ><td id=TipCell style='padding:15 5 5 6;  color:#ffffff; font-size:15px; '> 
+						Please be advised that albums that do not conform to the code of conduct will be taken down and illegal content reported to authorities.
+					</td>
+	            </tr>
+			</table>			
+		</DIV>
+		
+		<DIV id=scrollArea>		
+			<DIV class=description id=overview>
+				Choose one of the following permission settings, and then choose <b>Continue</b>.
+				
+				<div style="margin-top:10px;">
+					<table>
+						<tr>
+							<td valign="top"><INPUT type=radio NAME=spacePermissions id="spacePermissions0" value="Private"></td>
+							<td ></td>
+							<td><b>Private</b> - Only you can see this album.</td>
+						</tr>
+						<tr>
+							<td valign="top"><INPUT type=radio NAME=spacePermissions id="spacePermissions1" value="Shared"></td>
+							<td ></td>
+							<td><b>Messenger</b> -  Only the people on your Messenger Allow list can see this album .</td>
+						</tr>
+						<tr>
+							<td valign="top"><INPUT type=radio NAME=spacePermissions id="spacePermissions2" value="Public"></td>
+							<td ></td>
+							<td><b>Public</b> -  Everyone on the Internet can see this album. All content posted on a public space must be appropriate for all readers.</td>
+						</tr>
+					</table>
+					<!--
+					<INPUT type=radio NAME=spacePermissions id="spacePermissions2" value="Custom"> Private - Only you can see your space.<br>
+					-->
+				</div>
+					
+			</DIV>
+		</div>
+		<script>
+	        setTimeout("init();",100);
+		</script>
+</body>
+</html>

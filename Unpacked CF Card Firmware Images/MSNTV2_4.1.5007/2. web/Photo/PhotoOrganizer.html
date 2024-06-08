@@ -1,0 +1,1180 @@
+<html xmlns:msntv>
+<?import namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?import namespace="msntv" implementation="../HTC/ScrollingDIV.htc">
+<?import namespace="msntv" implementation="../HTC/PhotoHeading.htc">
+<?import namespace="msntv" implementation="../HTC/FileOrganizer.htc">
+
+<head>
+<title>Album Organzier</title>
+
+<link rel=StyleSheet type="text/css" href="../css/Base.css">
+<link rel=StyleSheet type="text/css" href="../css/Photo.css">
+
+
+<script LANGUAGE=Javascript SRC="../Javascript/TVShell.js"></script>
+<script LANGUAGE=Javascript SRC="../Javascript/ProgressPanel.js"></script>
+<SCRIPT language="Javascript" src="../Javascript/Panels.js"></SCRIPT>
+<SCRIPT language="Javascript" src="../Javascript/parameters.js"></SCRIPT>
+<SCRIPT language="Javascript" src="../Javascript/ContentPaneHelp.js"></SCRIPT>
+<SCRIPT language="Javascript" src="../photo/Photos.js"></SCRIPT>
+<style>
+	
+	.infoArea
+	{
+		position: absolute;
+		top: 56px;
+		left: 0px;
+		padding-left: 0px;
+		padding-right: 0px;
+		overflow: hidden;
+		startColor:#B2B2B2;
+		endcolor: #EBEBEB;
+		angle:0;
+	}
+					
+
+</style>
+	
+
+<script>
+
+PhotoManager.ClearThumbnailRequestQueue();
+PhotoManager.ClearImageResizeRequestQueue();
+//TVShell.ClearInternetCache("msntv:/Photo/PhotoOrganizer.html",false);
+
+var PanelManager=TVShell.PanelManager;
+var Utilities=TVShell.Utilities;
+
+var parameters= FindParameters(PanelManager);
+
+XMLFileURL = parameters.XMLFileURL;
+
+var oldDescriptionHTML="";
+var oldTipHTML="";
+var oldHeadingLabel="";
+
+
+
+var photoAreaHeight = 420; 
+var photoAreaWidth	= 560;
+var BOSPhotoCount = 0;
+var savedPhotoCount = 0;
+var checkedList=new Array();
+
+var tempImage = new Image();
+var destPath="";
+
+var topAlbum=GetFirstNonEmptyAlbum();
+var nameConvention="An album name can have letters (A-Z, a-z), spaces and numbers only and cannot be more than 30 characters long.";
+var oldScreensaver="";
+
+var FOSink=new ActiveXObject("MSNTV.MultipleEventSink");
+
+function ValidateName(newName) 
+{
+
+   var result=false;
+   var i=0;
+   if(newName)
+   {
+     var length=newName.length;
+     for(i=0;i<length;i++)
+     {
+        if(!IsValidChar(newName.charCodeAt(i)))
+          return false;
+      }
+      
+	  result=true;
+   }
+   
+   return result;
+}
+
+function ConfirmDelete(item, multiSelection) 
+{
+  var result=0;
+  var info="Are you sure you want to delete <em>"+item+"</em> and the photos in it?";
+  if(multiSelection)
+    result=TVShell.PanelManager.CustomMessageBox(info,"","OK;No confirm;Cancel",2,"", true);
+  else
+    result=TVShell.PanelManager.CustomMessageBox(info,"","OK;Cancel",1,"", true);
+   return result;
+}
+
+var charCodeOfCapA="A".charCodeAt(0); 
+var charCodeOfA="a".charCodeAt(0);
+var charCodeOfCapZ="Z".charCodeAt(0);
+var charCodeOfZ="z".charCodeAt(0);
+var charCodeOfNine="9".charCodeAt(0);
+var charCodeOfZero="0".charCodeAt(0);
+var charCodeOfSpace=" ".charCodeAt(0);
+
+function IsValidChar(code)
+{
+   if(code>=charCodeOfCapA&&code<=charCodeOfCapZ)
+     return true;
+   else if(code>=charCodeOfA&&code<=charCodeOfZ)
+     return true;
+   else if(code>=charCodeOfZero&&code<=charCodeOfNine)
+     return true;
+   else if(code==charCodeOfSpace)
+     return true;
+   else 
+     return false;
+}
+
+function OnLoad()
+{   
+
+    PhotoFileOrganizer.onClickBtn=OnClickBtn;
+    
+	PhotoFileOrganizer.onLeaveSrcContent=OnLeaveSrcContent;
+    PhotoFileOrganizer.onEnterSrcContent=OnEnterSrcContent;    
+	PhotoFileOrganizer.onEnterAddContent=OnEnterAddContent;
+    PhotoFileOrganizer.onLeaveAddContent=OnLeaveAddContent;	 
+	PhotoFileOrganizer.onEnterRenameContent=OnEnterRenameContent;
+    PhotoFileOrganizer.onLeaveRenameContent=OnLeaveRenameContent;	
+    PhotoFileOrganizer.onClickItem=OnClickItem;
+    PhotoFileOrganizer.onAddComplete=OnAddComplete;
+    PhotoFileOrganizer.onRenameOneComplete=OnRenameOneComplete;
+    PhotoFileOrganizer.onDeleteOneComplete=OnDeleteOneComplete;
+    PhotoFileOrganizer.onBuildContentComplete=OnBuildContentComplete;
+    PhotoFileOrganizer.onNoItemSelected=OnNoItemSelected;
+    PhotoFileOrganizer.onInvalidName=OnInvalidName;    
+    PhotoFileOrganizer.onError=OnError;  
+
+    PhotoFileOrganizer.ValidateNameFunction=ValidateName;
+    PhotoFileOrganizer.ConfirmDeleteFunction=ConfirmDelete;
+    PhotoFileOrganizer.SortNodesFunction=SortNodes;
+	PhotoFileOrganizer.VolumeName=userDataVolumeName;
+	PhotoFileOrganizer.FolderNameConvention=nameConvention;
+    PhotoFileOrganizer.InitPath=PhotoStorePath;
+	
+	//we have to set initial properties before calling open()
+    if(parameters["state"] && parameters["state"]=="save")
+	{
+	  PhotoFileOrganizer.MimeTypes="Folder";
+	  PhotoFileOrganizer.MultiSelection=false;
+	  PhotoFileOrganizer.SearchDepth=0 ;
+	  PhotoFileOrganizer.EnableMove=false ;
+	  PhotoFileOrganizer.EnableDelete=false;
+	  PhotoFileOrganizer.EnableRename=false;
+	  PhotoFileOrganizer.EnableAddFolder=false;
+	}
+	else if(parameters["state"] && parameters["state"]=="organize")
+	{
+	  PhotoFileOrganizer.MimeTypes="";
+	  PhotoFileOrganizer.MultiSelection=false;
+	  PhotoFileOrganizer.SearchDepth=1 ;
+	  PhotoFileOrganizer.EnableMove=false ;
+	  PhotoFileOrganizer.EnableDelete=true;
+	  PhotoFileOrganizer.EnableRename=true;
+      if(parameters["action"] && parameters["action"]=="add")
+	     PhotoFileOrganizer.Action="add";  
+      else if(parameters["action"] && parameters["action"]=="rename")
+	  {
+	     PhotoFileOrganizer.Action="rename"; 
+		 if(parameters["sources"])
+		 {
+            var paths=parameters["sources"].split("\n");
+		    var items = new Array();
+            for(i=0;i<paths.length;i++)
+			{
+              items[i]=new Array();
+			  items[i][0]=paths[i];
+			  items[i][1]="Folder";
+			  items[i][2]=GetFileName(paths[i]);	
+			}
+		    PhotoFileOrganizer.SourceItems=items;
+
+		 }
+	  }
+
+	}
+	else if(parameters["state"] && parameters["state"]=="screensaver")
+	{ 
+	  Heading.label="Select Screensaver";
+	  PhotoFileOrganizer.MimeTypes="Folder";
+	  PhotoFileOrganizer.Context="photo";
+      PhotoFileOrganizer.MultiSelection=true;
+	  PhotoFileOrganizer.EnableMove=false;
+	  PhotoFileOrganizer.EnableDelete=false;
+	  PhotoFileOrganizer.EnableAddFolder=false;
+	  PhotoFileOrganizer.EnableRename=false;
+	  PhotoFileOrganizer.SearchDepth=0 ;
+	}
+
+	PhotoFileOrganizer.Open();
+
+	//set the style of list area and button area to photo style
+	var listTable=GetListTable();
+	listTable.className="infoArea";
+	listTable.style.behavior="url(#default#gradient);";
+ 
+    //Set the tip cell attributes
+    var tipCell=GetTipCell();
+    tipCell.style.fontSize="12pt";
+
+    var descriptionCell=GetDescriptionCell();
+    descriptionCell.style.fontSize="12pt";
+
+	ActionCanceled=false;
+
+    if(parameters["state"] && parameters["state"]=="save")
+	{
+		var btn=GetButton("UserDefinedBtn2");
+		btn.label="Continue";
+		btn.style.display="block";	
+
+		oldHeadingLabel=Heading.label;
+		Heading.label="Save Photos to Album";
+		btn.focus();
+		
+		var listTable=PhotoFileOrganizer.GetObjectArray("_OrganizerScrollingTable")[0];
+
+		var isEmpty=false;
+		if(!listTable.all("FolderRow"))
+		{
+		   isEmpty=true;
+		   listTable.deleteRow(0);
+		}
+		
+		if(isEmpty)
+		  descriptionCell.innerHTML="<table width=100%  cellspacing=0 cellpadding=0><tr><td width=5></td><td>Photos are saved to your "+ProductShortName+" inside of albums. To save these photos to your "+ProductNickname+", you must first create an album. Type a name for your album below, then choose <em>Continue</em>. </td><td width=3></td></tr></table>";
+		else
+		  descriptionCell.innerHTML="<table width=100%  cellspacing=0 cellpadding=0><tr><td width=5></td><td>Choose the album where you want to save these photos, and then choose <em>Continue</em>. To create a new album, type a name for it in the box at the bottom of the page and then choose <em>Continue</em>.</td><td width=3></td></tr></table>";
+
+		var newAlbumHTML="<table  width=100%  cellpadding=0 cellspacing=0>"+
+							"<tr height=8><td colspan=6></td></tr>"+
+							"<tr height=30>"+
+							  "<td width=21></td>"+
+							  "<td><input  name=SelectionInputName id='NewFolderSelectionID' type=radio onfocus=\"DoScroll('scrollToEnd')\"></td>"+
+							  "<td width=4></td>"+
+							  "<td width=43% NOWRAP>New album name:</td>"+
+							  "<td><input class=inputText id=FolderNameInput type=text style='width:100%' maxlength=30 onfocus=\"DoScroll('scrollToEnd')\" onpropertychange='OnInputPropertyChange()'></td></tr>"+
+							  "<td width=10></td>"+
+						  "<tr height=9><td colspan=6></td></tr>"+
+						  "<tr><td></td><td></td><td></td><td colspan=2 style='border:1px solid black;padding:3px;margin:2px;color:#555555;'>"+nameConvention+"</td><td width=10></td></tr>"
+						  "</table>"
+
+		listTable.insertAdjacentHTML("afterEnd", newAlbumHTML);
+
+		if(isEmpty)
+		{  
+			NewFolderSelectionID.checked=true;
+			NewFolderSelectionID.style.display="none";
+			FolderNameInput.focus();
+		}
+
+		btn=GetButton("CancelBtn").label="Cancel";
+
+		var tipCell=GetTipCell();
+		oldTipHTML=tipCell.innerHTML;
+		tipCell.innerHTML="Tip: Photos saved to your "+ProductNickname+" are saved at a lower quality than your originals for TV display."
+
+	}
+    else if(parameters["state"] && parameters["state"]=="organize")
+	{
+		var FolderRows=PhotoFileOrganizer.GetObjectArray("FolderRow");
+		var isEmpty=false;
+
+
+		if(!FolderRows|| !FolderRows[0])
+			isEmpty=true;
+
+		var btn=GetButton("UserDefinedBtn2");	
+		btn.style.display="none";
+		if(!parameters["action"])
+		{
+			if(isEmpty)
+			  descriptionCell.innerHTML="<table width=100%  cellspacing=0 cellpadding=0><tr><td width=5></td><td>Photos are saved to your "+ProductShortName+" inside of albums. To save these photos to your "+ProductNickname+", you must first create an album. Choose <em>Add an Album</em> to create a new album.</td><td width=3></td></tr></table>";
+			else
+			  descriptionCell.innerHTML="<table width=100%  cellspacing=0 cellpadding=0><tr><td width=5></td><td>Photos are saved to your "+ProductShortName+" inside albums.  Choose the album name to view it or choose the album to rename or delete it.</td><td width=3></td></tr></table>";
+        }
+		else if(parameters["action"]&&parameters["action"]=="add")
+		{
+			var textRange = PhotoFileOrganizer.GetObjectArray("NewFolderTextbox")[0].createTextRange();
+			textRange.collapse(false);
+			textRange.select();
+		}
+		else if(parameters["action"]&&parameters["action"]=="rename")
+		{
+            var textRange=PhotoFileOrganizer.GetObjectArray("NewNameInput")[0].createTextRange();
+			textRange.collapse(false);
+			textRange.select();
+		}
+	}
+	else if(parameters["state"] && parameters["state"]=="screensaver")
+	{
+		  var btn=GetButton("UserDefinedBtn1");
+		  btn.style.display="block";	
+		  btn.label="Save";	
+		  var btn=GetButton("UserDefinedBtn2");
+		  btn.style.display="block";	
+		  btn.label="Preview";	
+		  btn.focus();
+		  btn=GetButton("CancelBtn");
+		  btn.label="Done";
+          
+
+		  list=PhotoFileOrganizer.GetObjectArray("FolderRow");
+
+		 
+		  var albumStr=Utilities.ReadTextFile("\\"+userDataVolumeName+"\\"+PhotoSettingsPath+"\\"+scFileName);
+
+
+			 if(albumStr)
+			 {
+				 var albums=albumStr.split("\n");
+				 var i=0;
+
+				 for(i=0;i<list.length;i++)
+				 {
+					
+					var tempName=GetFileName(list[i].all.hrefHiddenCell.innerText);
+					var j=0;
+					for(j=0;j<albums.length;j++)
+					{
+					  if(albums[j]==tempName)
+					  {
+					   list[i].all.ItemSelectionInput.click();
+					   break;
+					  }
+					}
+
+				 }
+			 }
+
+			GetTipCell().innerHTML="Select album(s) you want to use for screensaver."
+
+
+
+		//set the style of list area and button area to photo style
+		GetDescriptionCell().style.display="none";
+		oldScreensaver=Utilities.ReadTextFile("\\"+userDataVolumeName+"\\"+PhotoSettingsPath+"\\"+scFileName);
+	    FOSink.AttachEvent(PanelManager,"OnBeforeClose",OnBeforePreviewClose);
+	}
+    
+	if(!parameters["action"])
+    {
+	  GetButton("AddFolderBtn").label="Add an Album";
+	  GetButton("RenameBtn").label="Rename Album";
+	}
+	
+	GetButton("DeleteBtn").label="Delete Album";
+    
+}
+
+function OnBeforePreviewClose(panelname)
+{
+ if(panelname=="ScreenSaver")
+ {
+	Utilities.EnsureFolderExist("\\"+userDataVolumeName+"\\"+PhotoSettingsPath);
+	if(oldScreensaver)
+		Utilities.CreateTextFile("\\"+userDataVolumeName+"\\"+PhotoSettingsPath+"\\"+scFileName, oldScreensaver);
+	else
+		Utilities.RemoveFile("\\"+userDataVolumeName+"\\"+PhotoSettingsPath+"\\"+scFileName);
+ }
+}
+
+function UpdateStorageInfo()
+{
+     GetStorageInfo();
+	 var bcTable=PhotoFileOrganizer.GetObjectArray("ButtonContainerTable")[0];
+	 var cellObj;
+     if(!bcTable.all.StorageInfoRow)
+	 {
+
+		var rowObj=bcTable.insertRow(-1);
+		rowObj.id="StorageInfoRow"
+		cellObj=rowObj.insertCell(-1);
+        cellObj.id="StorageInfoCell";
+	 }
+	 else
+	    cellObj=bcTable.all.StorageInfoCell;
+	 if(parameters["state"]!="screensaver")
+	   cellObj.innerHTML="<table cellspacing=0 cellpadding=0><tr><td>Photo Storage:</td></tr><tr><td>"+BOSPhotoCount+" saved</td></tr><tr><td> "+(MAX_PHOTOS_ON_LOCAL_STORAGE-BOSPhotoCount)+" available"+"</td></tr></table>";
+     else
+	   cellObj.innerHTML="";
+}
+
+function OnInputPropertyChange()
+{
+  var eventSrc=window.event.srcElement;
+  var propertyName=window.event.propertyName;
+
+  if(propertyName=="value")
+  {
+     if(eventSrc.value)
+        NewFolderSelectionID.checked=true;
+  }
+}
+
+function OnBuildContentComplete()
+{
+  
+
+    PhotoFileOrganizer.GetObjectArray("ParentFolderRow")[0].style.display="none";
+
+    if(parameters["state"] && parameters["state"]=="organize")
+	{
+      var FolderRows=PhotoFileOrganizer.GetObjectArray("FolderRow");
+	  var isEmpty=false;
+
+      if(!parameters["action"])
+	  {
+		  if(!FolderRows|| !FolderRows[0])
+		  {
+			isEmpty=true;
+		  }
+
+		  var btn=GetButton("UserDefinedBtn2");
+		  btn.style.display="none";
+
+		  if(isEmpty)
+		  {
+			GetDescriptionCell().style.display="none";
+			var NoContentCell=PhotoFileOrganizer.GetObjectArray("NoContentCell")[0];
+
+			var htmlStr="<table cellspacing=0 cellpadding=0><tr><td width=10></td>";
+			htmlStr+="<td>Photos are saved to your "+ProductShortName+" inside of albums.  Choose <em>Add an Album</em> to create a new album.</td>";
+			htmlStr+="<td width=5></td></tr></table>";
+			NoContentCell.innerHTML=htmlStr	  
+		  }
+	  }
+	}
+
+
+   UpdateStorageInfo();
+   AddThumbnails();
+   
+}
+
+function OnNoItemSelected()
+{
+  alert("To complete selected activity, please choose an album.");
+}
+
+function TrimSpace(str)
+{
+   while(str.charAt(0)==' ')
+      str=str.substr(1);
+   while(str.charAt(str.length-1)==' ')
+      str=str.substr(0,str.length-1);
+
+	return str;
+}
+
+function OnClickBtn(event)
+{  
+   if(parameters["state"]=="organize")
+   {
+       if(event.result=="AddFolderBtn")
+       {
+          var newURL=location.href+"&action=add";
+          location=newURL;
+	   }
+       if(event.result=="RenameBtn")
+       {
+	      var srcItems=PhotoFileOrganizer.GetCheckedItems();
+		  if(srcItems && srcItems.length>0)
+		  {
+              var srcStr=""
+			  for(i=0;i<srcItems.length;i++)
+			  {
+			    if(i>0)
+				   srcStr+="\n";
+                srcStr+=srcItems[i][0]
+			  }
+
+			  var newURL=location.href+"&action=rename&sources="+srcStr;
+			  location=newURL;
+		  }
+          else
+		  {
+              alert("To complete selected activity, please choose an album.");
+		  }
+	   }
+	   else if(event.result=="CancelBtn")
+       {
+		 history.back();
+	   }
+   }
+   else if(parameters["state"]=="save")
+   {
+
+	   if(event.result=="UserDefinedBtn2")
+	   {  
+	  
+		  var checkedItems=new Array();
+		  if(PhotoFileOrganizer.GetObjectArray("NewFolderSelectionID")[0].checked)
+		  {
+		     var newName=TrimSpace(PhotoFileOrganizer.GetObjectArray("FolderNameInput")[0].value);
+			 var parentPath=PhotoFileOrganizer.GetObjectArray("hrefParentHiddenCell")[0].innerText;
+
+             if(ValidateName(newName))
+             {
+			     checkedItems[0]=new Array();
+                 checkedItems[0][0]=parentPath+"\\" +newName;
+				 checkedItems[0][1]="New Folder";
+			 }
+			 else
+			 {
+			     alert("Please enter a valid album name");
+				 return;
+			 }
+		  }
+		  else
+		     checkedItems=PhotoFileOrganizer.GetCheckedItems();
+		  if(!checkedItems || checkedItems.length<=0)
+			 alert("Please select an album or add a new album to save photos.");
+		  else
+		  { 
+		         destPath=checkedItems[0][0]
+		  	     SavePhotos();
+		  }
+	   }
+       else if(event.result=="CancelBtn")
+       {
+		 history.back();
+	   }
+    
+
+	}
+	else if(parameters["state"]=="screensaver")
+	{
+	   if(event.result=="UserDefinedBtn2")
+	   {  
+			  var info="Choose <em>Continue</em> to see a preview of your photo screensaver. <p><p>While the Photo Slideshow Screen Saver is playing, press the space bar or any alpha-numeric key to return to your previous activity.";
+			  var result=PanelManager.CustomMessageBox(info,"","Continue;Cancel",0,"", true,MGX_ICON_INFO);
+			  if(result==0)
+				  PreviewScreensaver()			  
+			  else
+			    return;
+	   }
+	   else if(event.result=="UserDefinedBtn1")
+	   {
+		   var info="Choose <em>OK</em> to save the photos in the selected albums as your screensaver images."
+		   var result=PanelManager.CustomMessageBox(info,"","OK;Cancel",0,"", true,MGX_ICON_INFO);
+		   if(result==0)
+		      SaveScreensaver(false);
+	   }
+
+	   else if(event.result=="CancelBtn")
+	   {
+		 var currStr=GetScreensaverStr();
+		 var savedStr=Utilities.ReadTextFile("\\"+userDataVolumeName+"\\"+PhotoSettingsPath+"\\"+scFileName);
+		 if(currStr!=savedStr)
+		 {
+		   var info="Your changes have not been saved!"
+		   var result=PanelManager.CustomMessageBox(info,"","Save;Do not save;",0,"", true);
+		   if(result==0)
+			  SaveScreensaver(false);
+		 }
+
+		 history.back();
+	   }
+	}
+}
+
+
+function OnClickItem(event)
+{
+	var path=event.result;
+	var destURL="msntv:/photo/Viewer.html?location=1&StorageDeviceVN=";
+	destURL+=escape(PhotoFileOrganizer.VolumeName);
+	destURL+="&path=";
+	var	currPath=path.substr(PhotoFileOrganizer.VolumeName.length+2);
+	destURL+=escapeplus(escape(currPath));
+	document.location=destURL;
+}
+
+
+function OnAddComplete(event)
+{   
+	PanelManager.AnimationMessageBox("You've successfully created an album", "msntv:/Favorites/img/FavSave.gif", "Task_Complete", 1000);
+    history.back();
+}
+
+function OnError(event)
+{  
+   var action=event.action;
+   var code=event.code;
+
+
+   switch(code)
+   {
+     case 2:
+         if(action=="rename")
+		   alert("Couldn't find the selected album.");
+	     break;
+	 case 80:
+	 case 183:
+	     if(parameters["state"] && parameters["state"]=="save")
+		   alert("There is already an album with that name.  Please select that album or enter a new name.");
+		 else
+		   alert("There is already an album with that name.  Please enter a new name.");
+         break;
+	 
+	 default:
+	     alert("Error: "+code);
+	     break;
+
+   }
+
+}
+
+function OnRenameOneComplete(event)
+{
+    var newName=event.newName;
+	var oldName=event.oldName;
+    
+
+	PanelManager.AnimationMessageBox("\""+oldName+" is renamed to \""+newName+"\"", "msntv:/Favorites/img/FavSave.gif", "Task_Complete", 1000);
+    if(newName)
+    {
+     
+		 var scAlbumStr=Utilities.ReadTextFile("\\"+userDataVolumeName+"\\"+PhotoSettingsPath+"\\"+scFileName);
+		 var newSCAlbumStr="";
+
+		 if(scAlbumStr)
+		 {
+			 var albums=scAlbumStr.split("\n");
+			 var i=0;
+			 var count=0;
+			 for(i=0;i<albums.length;i++)
+			 {
+				count++;
+				if(count>1)
+					newSCAlbumStr+="\n";
+				if(albums[i]!=oldName)
+				{
+
+				  newSCAlbumStr+=albums[i];
+				}
+				else
+				  newSCAlbumStr+=newName;
+			 }
+
+             Utilities.RemoveFile("\\"+userDataVolumeName+"\\"+PhotoSettingsPath+"\\"+scFileName);
+			 Utilities.CreateTextFile("\\"+userDataVolumeName+"\\"+PhotoSettingsPath+"\\"+scFileName,newSCAlbumStr);
+
+		 }
+
+     }
+     history.back();
+}
+
+function OnDeleteOneComplete(event)
+{
+   var deletedAlbum=GetFileName(event.deletedURL);
+   if(deletedAlbum)
+   {
+     
+	 var scAlbumStr=Utilities.ReadTextFile("\\"+userDataVolumeName+"\\"+PhotoSettingsPath+"\\"+scFileName);
+	 var newSCAlbumStr="";
+
+	 if(scAlbumStr)
+	 {
+		 var albums=scAlbumStr.split("\n");
+
+		 var i=0;
+         var count=0;
+		 for(i=0;i<albums.length;i++)
+		 {
+			
+			if(albums[i]!=deletedAlbum)
+			{
+			  count++;
+			  if(count>1)
+			    newSCAlbumStr+="\n";
+              newSCAlbumStr+=albums[i];
+			}
+		 }
+
+
+	     Utilities.RemoveFile("\\"+userDataVolumeName+"\\"+PhotoSettingsPath+"\\"+scFileName);
+		 Utilities.CreateTextFile("\\"+userDataVolumeName+"\\"+PhotoSettingsPath+"\\"+scFileName,newSCAlbumStr);
+	 }
+
+  }
+}
+
+
+function OnInvalidName(event)
+{   
+   var msg= "The name you entered is invalid.<p><p>"+nameConvention;
+   PanelManager.CustomMessageBox(msg,"", "OK", 0,"",true);
+}
+
+function GetScreensaverStr()
+{
+	var checkedItems=PhotoFileOrganizer.GetCheckedItems();
+    
+    var albumStr="";
+    for(i=0;i<checkedItems.length;i++)
+	{  
+	  if(i>0)
+	    albumStr+="\n";
+      albumStr+=GetFileName(checkedItems[i][0]);
+	}
+    
+	return albumStr;
+}
+
+function SaveScreensaver(IsPreview)
+{
+    var albumStr=GetScreensaverStr()
+
+	Utilities.EnsureFolderExist("\\"+userDataVolumeName+"\\"+PhotoSettingsPath);
+	if(albumStr)
+		Utilities.CreateTextFile("\\"+userDataVolumeName+"\\"+PhotoSettingsPath+"\\"+scFileName, albumStr);
+	else
+		Utilities.RemoveFile("\\"+userDataVolumeName+"\\"+PhotoSettingsPath+"\\"+scFileName);
+    if(!IsPreview)
+	  oldScreensaver=albumStr;
+}
+
+function PreviewScreensaver()
+{
+   
+   SaveScreensaver(true);
+
+   TVShell.ScreenSaver.Start();
+}
+
+function GotoScreensaverContent()
+{
+
+
+}
+
+
+
+function GetDescriptionCell()
+{
+   var objArray=PhotoFileOrganizer.GetObjectArray("DescriptionCell");
+   return objArray[0];
+}
+
+
+function GetTipCell()
+{
+   var objArray=PhotoFileOrganizer.GetObjectArray("TipCell");
+   return objArray[0];
+}
+
+
+function GetListTable()
+{
+   var objArray=PhotoFileOrganizer.GetObjectArray("ListContainerTable");
+   return objArray[0];
+}
+
+function GetButton(buttonID)
+{
+   var objArray=PhotoFileOrganizer.GetObjectArray(buttonID);
+   return objArray[0];
+}
+
+
+
+function OnLeaveSrcContent(event)
+{
+   if(parameters["state"] && parameters["state"]=="save")
+          ShowButton("UserDefinedBtn2",false);
+}
+
+function OnEnterSrcContent(event)
+{
+   if(parameters["state"] && parameters["state"]=="save")
+          ShowButton("UserDefinedBtn2",true);
+}
+
+function OnEnterAddContent(event)
+{     
+      var descriptionCell=GetDescriptionCell();
+	  descriptionCell.style.display="block";
+	  PhotoFileOrganizer.GetObjectArray("AddFolderInputLabel")[0].innerText="Album name:"
+      oldDescriptionHTML=descriptionCell.innerHTML;
+	  descriptionCell.innerHTML="<table cellpadding=0 cellspacing=0><tr><td height=5></td></tr><tr><td width=2%></td><td>You can save photos to your "+ProductShortName+" inside of albums. Type a name for the album you want to add, and then choose <em>Add</em>.</td><td width=2%></td></tr><tr><td height=15></td></tr></table>"
+      oldHeadingLabel=Heading.label;
+      Heading.label="Add an Album";
+      ShowButton("UserDefinedBtn2",false);
+	  GetButton("AddFolderBtn").label="Add";
+}
+
+function OnLeaveAddContent(event)
+{
+      var descriptionCell=GetDescriptionCell();
+      descriptionCell.innerHTML=oldDescriptionHTML;
+      Heading.label=oldHeadingLabel;
+	  GetButton("AddFolderBtn").label="Add an Album";
+}
+
+function DoScroll(direction)
+{
+   PhotoFileOrganizer.GetObjectArray("_OrganizerScrollingDiv")[0].MyDoScroll(direction);
+}
+
+function OnEnterRenameContent(event)
+{     
+      var descriptionCell=GetDescriptionCell();
+      descriptionCell.style.display="block";
+      oldDescriptionHTML=descriptionCell.innerHTML;
+	  descriptionCell.innerHTML="<table cellpadding=0 cellspacing=0><tr><td height=5></td></tr><tr><td width=2%></td><td>Type a new name for the album, then choose <em>Continue</em>.</td><td width=2%></td></tr><tr><td height=15></td></tr></table>"
+      //this line to adjust scrolling div to hide scroll bar
+	  DoScroll("up");
+	  oldHeadingLabel=Heading.label;
+      Heading.label="Rename Album";
+      ShowButton("UserDefinedBtn2",false);
+	  GetButton("RenameBtn").label="Continue";
+}
+
+function OnLeaveRenameContent(event)
+{
+      var descriptionCell=GetDescriptionCell();
+      descriptionCell.innerHTML=oldDescriptionHTML;
+      Heading.label=oldHeadingLabel;
+	  GetButton("RenameBtn").label="Rename Album";
+}
+
+
+function ShowButton(btnID ,show)
+{
+   var btn=GetButton(btnID);
+   if(show)
+      btn.style.display="block";
+   else
+      btn.style.display="none";      
+}
+
+function GetFileName(path)
+{
+  var index=path.lastIndexOf("\\");
+  if(index<0)
+    return path;
+  if(path.length==(index+1))
+    return "";
+  
+  return path.substr(index+1);
+}
+
+function GetStorageInfo()
+{
+	var StorageDevice = TVShell.StorageManager.Item(userDataVolumeName);
+	if (StorageDevice) 
+	{
+			
+		var xmlStr = StorageDevice.EnumerateItems(PhotoStorePath, "image/jpeg");
+		if(xmlStr)
+		{
+
+			var xmlDoc = new ActiveXObject("Msxml2.DOMDocument");
+			xmlDoc.async = false;
+
+			if(xmlDoc.loadXML(xmlStr))
+			{
+    
+				var nodes = xmlDoc.selectNodes("//a:response[a:propstat/a:prop/a:iscollection = 0]");
+    
+				if (nodes)
+					BOSPhotoCount = nodes.length;
+			}
+		}
+
+		delete xmlDoc;
+     }
+}
+
+function SavePhotos()
+{
+
+    var tempFileName = "\\temp\\photo\\TempSelectedPhotoList.txt";
+	var listStr=Utilities.ReadTextFile(tempFileName);
+    var list;
+	
+
+	checkedList=new Array();
+    
+
+	if(listStr)
+         list=listStr.split("\n");
+    var count=list.length;
+	var j=0;
+
+	for(i=0;i<count;i++)
+	{
+       if(list[i]){
+         checkedList[j]=list[i];
+		 j++;
+	  }
+	}
+
+    if(checkedList.length+BOSPhotoCount>MAX_PHOTOS_ON_LOCAL_STORAGE)
+    {
+		var msg="You are attempting to add "+checkedList.length+" photos to an album.  This exceeds the total photo storage capacity. Please select fewer photos or discard some photos first.";
+		PanelManager.CustomMessageBox(msg,"", "Cancel", 0,"",true);
+		history.go(-1);
+		return;
+	}
+
+	if(checkedList.length>0){
+	   ShowProgressPanel();
+       SetProgressText("Saving photos, please wait...");
+       SetProgressPercent(0);
+	   SetProgressStopFunction(CancelSave);
+	   setTimeout("StartSave()",500)
+	}
+
+}
+
+function StartSave()
+{
+   tempImage.onload = OnImageLoad;
+   tempImage.index = 0;
+   tempImage.src = ResizeAndGetURL(checkedList[0], photoAreaHeight, photoAreaWidth, true);
+}
+
+
+function OnImageLoad()
+{
+	var photoSrc = this.src;
+	var srcFileName = photoSrc;
+	var cacheFileName ="";
+	
+	if(this.index==checkedList.length - 1)
+	  tempImage.onload = null;
+
+	if (IsNetworkFile(photoSrc))
+	{
+		var cacheFileName = Utilities.GetCacheFileName(photoSrc);
+    	if(cacheFileName!="")
+		srcFileName = cacheFileName;
+	}
+			
+	var pos = srcFileName.lastIndexOf("file://");
+	if(pos!=-1)
+	   srcFileName = srcFileName.slice(pos+7);
+	
+	srcFileName = ChangeForwardToBackwardSlash(srcFileName);	
+	srcFileName = decodeURI(srcFileName);
+		
+	this.src = "";
+	
+	if(ActionCanceled)
+	{
+	   tempImage.onload = null;
+	   tempImage.index=0;
+	   savedPhotoCount=0;
+	   ActionCanceled=false;
+	   destPath="";
+	   HideProgressPanel();
+	   location.reload();
+	   return;
+	}
+
+
+	if(destPath && srcFileName)
+	{	
+		if(!userDataPath)
+		  return;
+	    
+		var dateObj=new Date();
+    	
+		var dstURL =  destPath+"\\"+dateObj.getTime()+""+this.index+".image.jpg";
+	    
+		if (IsNetworkFile(photoSrc) && cacheFileName=="")
+		{
+				srcFileName = photoSrc;
+		}
+
+		if(ThumbnailManager.CopyFileToURL(srcFileName, dstURL))
+		{
+			BOSPhotoCount++;
+
+			savedPhotoCount++;
+			var percent=parseInt((this.index+1)/(checkedList.length)*100);
+
+		    SetProgressPercent(percent);
+			SetProgressText("saving photo "+(this.index+1)+" of "+checkedList.length+" ...");
+			setTimeout("SaveNext()",50); //give a chance to IE to update progress info
+		}
+    }
+}
+			
+
+// fetch the next photo
+function SaveNext()
+{
+		if(tempImage.index < checkedList.length - 1)
+		{
+			tempImage.index++;
+    		tempImage.src = ResizeAndGetURL(checkedList[tempImage.index], photoAreaHeight, photoAreaWidth, true); 
+		}
+	
+ 		// hide the panel once done
+
+ 		if(tempImage.index == checkedList.length - 1)
+		{	
+		    tempImage.onload=null;
+		    tempImage.src="";
+			tempImage.index = -1;
+
+			HideProgressPanel();
+			if(savedPhotoCount > 0)
+			{
+			    UpdateStorageInfo();
+		    	var msg = "You have successfully added " + savedPhotoCount+(savedPhotoCount>1?" photos":" photo")+" to <em>"+GetFileName(destPath)+"</em> album.";
+		    	msg+="<p><br>Total Saved: ";
+	    		msg+=BOSPhotoCount;
+
+
+		    	msg+=(BOSPhotoCount>1)? " photos" : " photo";
+	    		msg+=" <p>";
+		    	msg+="Space available: ";
+				msg+=100 - BOSPhotoCount;
+				msg+=((100 - BOSPhotoCount)>1)? " photos" : " photo";
+	
+				var ret = PanelManager.CustomMessageBox(msg,((savedPhotoCount>1)?"Photos Saved":"Photo Saved"), "View Album;Done", 0,"",true, MGX_ICON_INFO);
+                
+				if(ret==0)
+				{
+
+					var destURL="msntv:/photo/Viewer.html?location=1&StorageDeviceVN=";
+					destURL+=escape(PhotoFileOrganizer.VolumeName);
+					destURL+="&path=";
+					var	currPath=destPath.substr(PhotoFileOrganizer.VolumeName.length+2);
+					destURL+=escapeplus(escape(currPath));
+					document.location=destURL;
+				}
+				else
+				  history.go(-1);
+		    }
+ 
+  		}
+}
+
+
+
+function CancelSave()
+{
+   ActionCanceled=true;
+}
+
+
+
+
+var albumThumbnailSrc;
+var totalAlbumCount=0;
+
+
+function AddThumbnails()
+{
+   PhotoManager.ClearThumbnailRequestQueue();
+   PhotoManager.ClearImageResizeRequestQueue();
+
+   albumThumbnailSrc=new Array();
+   var folderRows=PhotoFileOrganizer.GetObjectArray("FolderRow");
+   var firstItem;
+   var i;
+
+   var hrefNodeText;
+   if(!folderRows || folderRows.length==0 || !folderRows[0])
+       return;
+  
+
+   totalAlbumCount=folderRows.length;
+
+
+   for(i=0;i<totalAlbumCount;i++)
+   {  
+	   hrefNodeText=folderRows[i].all.hrefHiddenCell.innerText;
+	   firstItem=GetFirstPhotoInAlbum(userDataVolumeName, hrefNodeText);
+ 	   if(firstItem && firstItem.length==3)
+	   {   	
+	        
+			albumThumbnailSrc[i]=firstItem[2];
+			defaultThumb= PhotoManager.DefaultPhotoThumbURL;				
+			availableThumb=RequestThumbnail(firstItem[2]); 
+			folderRows[i].all.ThumbnailDiv.innerHTML="<table cellpadding=0 cellspacing=0 width=100% height=100%><tr><td align=center valign=center><img border=0 id=imgThumbnail"+i+" width=10 height=10 SRC='"+availableThumb+"' LOWSRC='"+defaultThumb+"' onload='OnLoadThumbnail("+i+")'></td></tr></table>";
+	   }
+   }
+
+}
+
+function RequestThumbnail(fileName)
+{
+	var imgThumbURL=PhotoManager.DefaultPhotoThumbURL;
+	
+	if(IsInRotatedImageList(fileName))
+	{
+		var dstURL = PhotoManager.GetRotatedImageURL(fileName);
+		imgThumbURL = PhotoManager.RequestThumbnail(dstURL, true, true);
+	}
+	else
+	{	
+		imgThumbURL = PhotoManager.RequestThumbnail(fileName,false, true);
+	}
+	
+	return imgThumbURL;
+
+}
+
+
+function OnLoadThumbnail(index)
+{
+ 
+   var id="imgThumbnail"+index;
+
+   var imgObj=document.all(id);
+   var url=imgObj.src
+
+
+   url= url.substr(url.indexOf("file://")+7);
+   //IE gives escaped url, we have unescape to pass it to thumbnail manager in case there are spaces in album name
+   url=unescape(url);
+
+   var originalImageWidth  = ThumbnailManager.GetImageWidth(url);
+   var originalImageHeight = ThumbnailManager.GetImageHeight(url);
+
+   if((originalImageHeight <= 45) && (originalImageWidth <= 60))
+   {
+      imgObj.width=originalImageWidth;
+      imgObj.height=originalImageHeight;
+   }
+   var ratio=originalImageHeight/originalImageWidth;
+
+   if(ratio>0.75)
+   {
+      imgObj.height=45;
+      imgObj.width=parseInt(45/ratio);
+   }
+   else if(ratio<=0.75)
+   {
+      imgObj.width=60;
+      imgObj.height=parseInt(60*ratio);
+   }
+
+}
+
+
+
+
+</script>
+</head >
+<body topmargin=0 leftmargin=0 rightmargin=0 bottommargin=0 onload="OnLoad()">
+	<table height=100% width=100% cellpadding=0 cellspacing=0>
+	  <tr width=100%><td height=56>
+	    <msntv:PhotoHeading id="Heading" label="Albums"/>
+      </td></tr>
+	  <tr width=100% height=100% ><td width=100% height=100% valign=top>	  	
+		<table width=100% height=100% cellpadding=0 cellspacing=0 >
+		  <tr><td width=100% valign=top>
+		    <msntv:fileOrganizer id="PhotoFileOrganizer" ItemName="photo" MultiItemName="photos"  FolderIconURL="msntv:/photo/assets/PhotoAlbum.png"/>
+		  </td></tr>
+		</table>
+      </td></tr>
+	</table>
+</body>
+</html>

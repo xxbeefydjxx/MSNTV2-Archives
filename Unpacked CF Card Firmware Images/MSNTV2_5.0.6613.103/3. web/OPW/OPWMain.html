@@ -1,0 +1,102 @@
+<html>
+<head>
+<style>
+.header
+{
+	font-size:18px;
+	font-family:Highway;
+	font-weight:bold;
+}
+.subHeader
+{
+	font-size:16px;
+	font-family:Highway;
+	padding-left: 15px; 	
+	width:440px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+</style>
+<script language="javascript" src="msntv:/javascript/TVShell.js"></script>
+<script language="Javascript" src="msntv:/Javascript/PanelImpl.js"></script>
+<script language="javascript">
+
+var CASEINSENSITIVE = 0x00000008;
+var mainpanel=PanelManager.Item("main");
+var Sink = new ActiveXObject("MSNTV.MultipleEventSink");
+
+function backClicked()
+{
+	TVShell.Message("backClicked");
+	var obj = document.getElementById("provider");
+
+	mainPanel.InvokeFrameScriptFunc(obj,"onBack",CASEINSENSITIVE);
+}
+
+
+function nextClicked()
+{
+	TVShell.Message("nextClicked");
+	var obj = document.getElementById("provider");
+
+	mainPanel.InvokeFrameScriptFunc(obj,"onNext",CASEINSENSITIVE);
+
+}
+
+
+function cancelClicked()
+{
+	TVShell.Message("cancelClicked");
+//	var obj = document.getElementById("provider");
+
+//	mainPanel.InvokeFrameScriptFunc(obj,"onCancel",CASEINSENSITIVE);
+	alert("you are cancelling the printing wizard.");
+	history.back();
+}
+
+function OnOPWSetWizardButtons(back, next, lastPage)
+{
+	TVShell.Message("    OnOPWSetWizardButtons    back=" + (back? "true" : "false") + "  next=" + (next? "true" : "false") + "  lastPage= " + (lastPage? "true" : "false"));
+	document.all.backButton.disabled = ! back;
+	document.all.nextButton.disabled = ! next;
+//	document.all.cancelButton.disabled = ! lastPage;
+}
+
+
+
+function OnOPWSetHeaderText(title, subtitle)
+{
+	var theHeader = document.getElementById("header");
+	var theSubHeader = document.getElementById("subHeader");
+
+	theHeader.innerHTML = title;
+	theSubHeader.innerHTML = subtitle;
+}
+
+
+function onload()
+{
+	OnOPWSetWizardButtons(false,false,true);
+}
+
+
+Sink.AttachEvent(PanelManager, "OnOPWSetWizardButtons", OnOPWSetWizardButtons);
+Sink.AttachEvent(PanelManager, "OnOPWSetHeaderText", OnOPWSetHeaderText);
+
+</script>
+</head>
+<body onload="onload();">
+<div style="border:1px solid #656565;margin:0 0 10px;background-color:#f9f9f9; width:100%; height:45px;">
+	<span id="header" class="header">Select a Printing Company</span><br>
+	<span id="subHeader" class="subHeader">The companies below print high-quality photographs</span>
+</div>
+<iframe id="provider" name="provider" src="msntv:/opw/OPWCreateManifest.html" width="100%" height="260" frameborder="1" scrolling="auto"></iframe>
+<br>
+<div style="border:1px solid #656565;margin:0 0 10px;background-color:#f9f9f9; width:100%; height:35px;">
+	<input type="button" name="backButton" value="Back" onclick="backClicked();">
+	<input type="button" name="nextButton" value="Next" onclick="nextClicked();">
+	<input type="button" name="cancelButton" value="Cancel" onclick="cancelClicked();">
+</div>
+</body>
+</html>

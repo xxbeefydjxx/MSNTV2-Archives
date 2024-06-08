@@ -1,0 +1,316 @@
+<HTML xmlns:msntv>
+<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../HTC/SettingsHeading.htc">
+
+<HEAD>
+	<TITLE>Access Numbers 2</TITLE>
+	<SCRIPT LANGUAGE=Javascript SRC="../Javascript/TVShell.js"></SCRIPT>
+	<SCRIPT LANGUAGE=Javascript SRC="../Javascript/ConnectionManager.js"></SCRIPT>
+	<SCRIPT LANGUAGE=Javascript SRC="../Javascript/SettingsTemplate.js"></SCRIPT>
+	<SCRIPT language="Javascript" src="../Javascript/ServiceList.js"></SCRIPT>
+	<SCRIPT LANGUAGE=Javascript SRC="../../Javascript/parameters.js"></SCRIPT>
+	<SCRIPT LANGUAGE=Javascript SRC="msntv:/msntv_progress_loc.js"></SCRIPT>
+	<SCRIPT language="Javascript" src="../Javascript/ProgressPanel.js"></SCRIPT>
+
+	<LINK REL=StyleSheet TYPE="text/css" HREF="../CSS/Settings.css">
+
+	<style>
+		#tollWarningSpan
+		{
+			font-size:26px;
+			zoom:50%;
+		}
+	</style>
+</HEAD>
+
+<BODY>
+<SCRIPT>OpenSettingsTable( "Settings" , "Your " + ServiceShortName + " access numbers" , "" );</SCRIPT>
+
+<DIV id=sideBar>
+	<msntv:CustomButton onclick="submitChanges()" label="Save Changes" id="Done" />
+	<msntv:CustomButton onclick="GotoAdvanced()" label="Dialing Options" id="Advanced" />
+	<msntv:CustomButton onclick="CancelChanges()" label="Cancel" id="Cancel" />
+
+	<table>
+		<tr ><td valign=Center style='padding:15 5 5 6; font-size:15px;color:navy'>
+			Tip:  To see additional access numbers, scroll to the bottom of this page and choose <EM>"Get more access numbers"</EM>.
+		</td></tr>
+	</table>
+
+	<script>document.all("Cancel").focus();</script>
+	<script>	if (TVShell.ConnectionManager.WANAdapter.ErrorCode == ConnectError_DialSettingsStale) document.all.Done.label="Connect";</script>
+</DIV>
+
+<DIV id=scrollArea>
+	<DIV class=description>
+		<SCRIPT LANGUAGE=Javascript>
+
+		function getTollWarning()
+		{
+			var str = "<P><B>WARNING: THE USE OF SOME OF THE FOLLOWING TELEPHONE NUMBERS MAY RESULT IN LONG DISTANCE CHARGES. IN SELECTING " +
+			"YOUR ACCESS NUMBER(S), PLEASE NOTE THAT ALTHOUGH AN ACCESS NUMBER MAY BE IN YOUR AREA CODE OR LOCATED IN YOUR GENERAL " +
+			"GEOGRAPHIC REGION, IT MAY NOT NECESSARILY BE A LOCAL NUMBER FOR YOU.  YOU MAY INCUR SUBSTANTIAL TELEPHONE CHARGES IF YOU " +
+			"CHOOSE ACCESS NUMBERS THAT ARE NOT COVERED BY YOUR LOCAL CALLING PLAN.  WE URGE YOU TO CHECK WITH YOUR TELEPHONE COMPANY " +
+			"TO FIND OUT WHICH NUMBERS ARE LOCAL FOR YOU BEFORE USING A NUMBER FROM THIS LIST.</B></P>";
+
+			return str;
+		}
+
+		function getMoreAccessNumbers()
+		{
+			var ModemSettings = TVShell.ConnectionManager.ModemAdapter.Settings;
+			var AreaCode = ModemSettings.DialingAreaCode;
+			var Exchange = ModemSettings.DialingExchange;
+
+			if(ConnectState_Connected == TVShell.ConnectionManager.WANState &&
+				AdapterType_Modem == TVShell.ConnectionManager.WANAdapter.Type) {
+				SetProgressStopFunction(null);
+				SetProgressText("Please wait while we find nearby dial-up access numbers." );
+				SetProgressPercent(0);
+				ShowProgressPanel();
+				SetProgressPercent(50);
+				TVShell.ConnectionManager.MSNIASettings.PhonebookID = "";
+				TVShell.ConnectionManager.MSNIAManager.CurrentConnector.Poptimize("0", AreaCode, Exchange);
+				SetProgressPercent(100);
+				TVShell.ConnectionManager.WANAdapter.ErrorCode = ConnectError_DialSettingsStale;
+				// HideProgressPanel();  The disconnect will hide the progress panel
+			} else {
+				ClearLocalPopPhoneBook();
+				LoginToService();
+			}
+		}
+
+		var Connector = TVShell.ConnectionManager.MSNIAManager.CurrentConnector;
+		var strOutOfDate = "<P>Your internet access numbers are out of date.  The next time you connect you will be supplied with new internet access numbers.</P>";
+
+		if (Connector && (Connector.Name != LocalConnectorName)) {
+			var Connector2 = GetConnectorByName(LocalConnectorName);
+
+			if (Connector2) {
+				Connector = Connector2;
+			}
+		}
+
+		if (Connector && Connector.Name == LocalConnectorName) {
+			var Phonebook = Connector.Phonebook;	
+
+			if (Phonebook.Count == 0) {
+				document.all.Done.style.display = "none";
+				document.all.Advanced.style.display = "none";
+				document.write( strOutOfDate );
+			} else {
+				document.write("<P>Choose all <EM>local</EM> "+ServiceShortName+" access numbers from the list below, and then choose <EM>Save Changes</EM>.</P>");
+				document.write("<span id=tollWarningSpan>" + getTollWarning() +"</span>");
+				document.write("<P>Select the boxes next to the numbers you want your " + ProductShortName + " to dial.</P>");
+
+				function selectNumber(i)
+				{
+					if (Phonebook.Count > 1)
+						f = document.all.UseNumberCB[i].checked;
+					else
+						f = document.all.UseNumberCB.checked;
+					
+					if (f)
+					{
+						document.all["num"+i].style.backgroundColor = "#b6f2e7";
+					}
+					else
+					{
+						document.all["num"+i].style.backgroundColor = "";
+					}
+				}
+
+				document.write("<TABLE class=controlTable>");
+
+				for (var i=0; i<Phonebook.Count; i++) {
+					var pbEntry = Phonebook.Item(i);
+					
+					document.write(	"<TR name=num" + i + " id=num" + i + ">");
+					document.write( "<TD style=\"BORDER-TOP: #5981b3 2px solid\" align=\"center\">");
+					document.write( "<INPUT TYPE=\"checkbox\" NAME=\"UseNumberCB\" onClick=\"selectNumber("+i+");\"");
+					if ((!pbEntry.DontUseNumber && !pbEntry.NotUserVerified) && 
+						(TVShell.ConnectionManager.MSNIASettings.PhonebookID == Phonebook.LocationID)) {
+						document.write(" CHECKED ");
+					}
+					document.write( ">" );
+
+					document.write( "<TD style=\"BORDER-TOP: #5981b3 2px solid\">&nbsp;");
+					document.write( FormatPhoneByVal(pbEntry.Number) );
+					document.write( "&nbsp;&nbsp;("+pbEntry.Location+")" );
+					document.write(	"</TR>");
+				}
+
+				document.write("</TABLE>");
+
+				for (var i=0; i<Phonebook.Count; i++) {
+					selectNumber(i);
+				}
+
+				if(ConnectState_Connected != TVShell.ConnectionManager.WANState ||
+					Service_Authorized != TVShell.ConnectionManager.ServiceState) {
+					document.write("<P>If you would like to choose from a longer list of access numbers, choose <EM>Get more access numbers</EM>.");
+					document.write("<UL class=links><LI><a onClick='getMoreAccessNumbers()'>Get more access numbers</A></LI></UL>");
+				}
+			}
+		} else {
+			document.all.Cancel.label = "Done";
+			document.all.Done.style.display = "none";
+			document.all.Advanced.style.display = "none";
+			document.write( strOutOfDate );
+		}
+		</SCRIPT>
+	</DIV>
+</DIV>
+
+<SCRIPT>CloseSettingsTable();</SCRIPT>
+
+</BODY>
+
+<SCRIPT LANGUAGE=Javascript>
+function NeedMorePhoneBookSelections(Phonebook, Selections)
+{
+	// how many numbers have been selected and how many local numbers are unselected
+	var selectedNumbers = 0;
+	var unselectedLocalNumbers = 0;
+	var unselectedTollNumbers = 0;
+	
+	for (var i = 0; i < Phonebook.Count; i++) {
+		if (Selections.UseNumberCB[i].checked) {
+			selectedNumbers++;
+		} else {
+			if (Phonebook.Item(i).IsLocal) {
+				unselectedLocalNumbers++;
+			} else {
+				unselectedTollNumbers++;
+			}
+		}
+	}
+
+	if (selectedNumbers < 1 && unselectedLocalNumbers > 0) {
+		window.alert("You should choose at least two access numbers so that we can connect you to the MSN TV Service.");
+		return true;
+	} else if (!selectedNumbers && unselectedTollNumbers) {
+		window.alert("You must choose at least one access number so that we can connect you to the MSN TV Service.");
+		return true;
+	}
+
+	return false;
+}
+
+function saveSettings()
+{
+	var dirty = false;
+	
+	if (Connector && (Connector.Name == LocalConnectorName)) {
+		var Phonebook = Connector.Phonebook;	
+
+		if (Phonebook.Count == 0) {
+			return true;
+		} else if (Phonebook.Count == 1) {
+			var pbEntry = Phonebook.Item(0);
+
+			if (!document.all.UseNumberCB.checked && pbEntry.IsLocal) {
+				window.alert("You must choose at least one access number so that we can connect you to the MSN TV Service.");
+				return false;
+			}
+			
+			if (pbEntry.DontUseNumber != !document.all.UseNumberCB.checked) {
+				pbEntry.DontUseNumber = !document.all.UseNumberCB.checked;
+				dirty = true;
+			}
+			
+			if (pbEntry.NotUserVerified != false) {
+				pbEntry.NotUserVerified = false;
+				dirty = true;
+			}
+		} else if (Phonebook.Count > 1) {
+			var chosen = false;
+			var i;
+
+			if (NeedMorePhoneBookSelections(Phonebook, document.all.UseNumberCB)) {
+				return false;
+			}
+		
+			for (i=0; i<Phonebook.Count; i++) {
+				var pbEntry = Phonebook.Item(i);
+
+				if (pbEntry.DontUseNumber != !document.all.UseNumberCB[i].checked) {
+					pbEntry.DontUseNumber = !document.all.UseNumberCB[i].checked;
+					dirty = true;
+				}
+				
+				if (pbEntry.NotUserVerified != false) {
+					pbEntry.NotUserVerified = false;
+					dirty = true;
+				}
+			}
+		}
+
+		// The below if() is for TEST ONLY
+		if (TVShell.ConnectionManager.MSNIASettings.PhoneBookID == TEST_BACKGROUND_REPOPTIMIZATION) {
+			dirty = true;
+			TVShell.ConnectionManager.MSNIASettings.PhoneBookID = Phonebook.LocationID;
+		}
+
+		if (TVShell.ConnectionManager.MSNIASettings.PhonebookID != Phonebook.LocationID) {
+			dirty = true;
+			TVShell.ConnectionManager.MSNIASettings.PhonebookID = Phonebook.LocationID;
+		}
+		
+	}
+
+	if(dirty) {
+		ClearBootromAccessNumber();
+		ConnectionManagerSave();
+	}
+
+	return true;
+}
+
+function NavigateBack()
+{
+	if (TVShell.ConnectionManager.WANAdapter.ErrorCode == ConnectError_DialSettingsStale) {
+		if (TVShell.ConnectionManager.ServiceState == Service_Authorized) {
+			LoginToService("connection::reconnect");
+			setTimeout( 'GoBackOnceConnected();' , 1000);
+		} else {
+			LoginToService("connection::login");
+		}
+	} else {
+		history.go(-1);
+	}
+}
+
+function submitChanges()
+{
+	if (!saveSettings())
+		return false;
+
+	TVShell.PanelManager.AnimationMessageBox("Your changes have been saved.", "msntv:/Panels/Images/TaskCompleted.gif", "Task_Complete", 2000);
+	NavigateBack();
+
+	return true;
+}
+
+function CancelChanges()
+{
+	var parameters = FindParameters(TVShell.PanelManager);
+
+	if (parameters["AutoNavigated"]) {
+		TVShell.ConnectionManager.ServiceState = Service_ReSignIn;
+		GotoSignOn();
+	} else {
+		history.go(-1);
+	}
+}
+
+function GotoAdvanced()
+{
+	if (!saveSettings())
+		return false;
+
+	document.location = "AdvancedNumbers.html";
+
+	return true;
+}
+</SCRIPT>

@@ -1,0 +1,6 @@
+L_GOTO_TITLE = "Type www"
+L_GOTO_SUBTITLE = "Type the address of a Web page you want to go to and then choose <b>Go</b>. A Web address looks like this: www.website.com"
+L_GOTO_GOBUTTON_LABEL = "Go"
+L_GOTO_CANCELBUTTON_LABEL = "Cancel"
+L_GOTO_PROMPT = "Are you looking for?"
+L_GOTO_SHOWCURRENTBUTTON_LABEL = "Show current Web address"

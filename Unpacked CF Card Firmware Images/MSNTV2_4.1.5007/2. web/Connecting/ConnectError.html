@@ -1,0 +1,136 @@
+<HTML xmlns:msntv>
+<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+<HEAD>
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=iso-8859-1">
+	<TITLE>Connect Error</TITLE>
+<link rel="StyleSheet" type="text/css" href="../CSS/Dialog.css">
+</HEAD>
+
+<SCRIPT language=Javascript src="../Javascript/TVShell.js"></SCRIPT>
+<SCRIPT language=Javascript src="../Javascript/ConnectionManager.js"></SCRIPT>
+<SCRIPT language=Javascript src="../Javascript/ConnectionErrors.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/parameters.js"></SCRIPT>
+<SCRIPT>
+	var HideSettings = false;
+	var HideCancel = true;
+
+	var parameters = FindParameters(TVShell.PanelManager);
+
+	if (parameters["ErrorMode"] == "LAN") {
+		SetErrorMode(LANErrorMode);
+		HideCancel = false;
+	} else
+		SetErrorMode(WANErrorMode);
+
+	function DoCancel()
+	{
+		TVShell.ServiceList.Remove("LAN::Goto");
+		history.go(-1);
+	}	
+
+	function GotoConnect()
+	{
+		TVShell.PanelManager.Item('main').NoBackToMe = true;
+		if ( TVShell.ConnectionManager.WANCause == "FullUpdate" ) {
+			document.location = "msntv:/Update/FullUpdate.html";
+			return;
+		}
+		if (parameters["ErrorMode"] == "LAN") {
+			TVShell.ConnectionManager.LANConnect("LAN::Goto");
+		} else
+			LoginToService();
+	}
+
+	function GotoSettings()
+	{
+		if (parameters["ErrorMode"] == "LAN")
+			document.location.replace("msntv:/Settings/ConnectionSettings.html?LANSetup=1");
+		else
+			document.location = "msntv:/Settings/ConnectionSettings.html?confirm=true"
+	}
+	
+	function KeyDown()
+	{
+		if (event.altKey)
+			errorDIV.style.visibility = "visible";
+	}
+</SCRIPT>
+
+
+<BODY class=fullPage onkeydown="KeyDown()">
+<div id="icon"></div>
+<div id="title" class="header">
+	<SCRIPT>
+		document.write(FriendlyErrorTitle());
+	</SCRIPT>
+</div>	
+<div id="description">
+	<SCRIPT>
+	document.write(FriendlyErrorBody(false));
+	var output = "";
+	if (!UsingBroadband) {				
+		switch (ErrorCode) {
+			case ConnectError_ExtensionOffhook:
+			case ConnectError_IncomingCall:
+			case ConnectError_LineInUse:
+			case ConnectError_LineReversal:
+			case ConnectError_NoLine:
+				HideSettings = true;
+				break;
+
+			case ConnectError_AuthFailure:
+				if (TVShell.ConnectionManager.WANProvider != BYOAModemProviderName) {
+					HideSettings = true;
+					break;							
+				}
+		}
+		
+		switch (ErrorCode) {
+			case ConnectError_NoCarrier:
+			case ConnectError_NoDialTone:
+			case ConnectError_NoAnswer:
+			case ConnectError_ExtensionOffhook:
+			case ConnectError_IncomingCall:
+			case ConnectError_LineInUse:			
+				output = "";
+
+			case ConnectError_Busy:
+			case ConnectError_LineReversal:
+			case ConnectError_NoLine:
+			case ConnectError_AuthFailure:
+			default:
+				output = "<P>To try connecting again, choose <EM>Try Again</EM>.</P>";
+				break;
+		}
+	} else {
+		switch (ErrorCode) {
+			case ConnectError_NoLine:
+				HideSettings = true;
+			default:
+				output = "<P>To try connecting again, choose <EM>Try Again</EM>.</P>";
+				break;
+		}
+	}
+
+	document.write(output);
+	
+	</SCRIPT>
+</div>
+<div id="buttonBar">
+	<SCRIPT>
+		if (!HideCancel)
+			document.write('<msntv:CustomButton label="Cancel" onClick="DoCancel()" />');
+		if (!HideSettings)
+			document.write('<msntv:CustomButton label="Settings" onClick="GotoSettings()" />');
+	</SCRIPT>
+	<msntv:CustomButton id=default label="Try Again" onClick="GotoConnect();" />
+	<script>document.all("default").focus();</script>
+</div>
+
+<DIV id=errorDIV>
+	<SCRIPT>
+		document.write(ShortErrorMessage());
+	</SCRIPT>
+</DIV>
+
+</BODY>

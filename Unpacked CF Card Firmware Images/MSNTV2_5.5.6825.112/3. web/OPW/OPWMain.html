@@ -1,0 +1,344 @@
+<html xmlns:msntv>
+<?import namespace="msntv" implementation="msntv:/HTC/CustomButton.htc">
+<head>
+<style>
+
+body
+{
+	background-color: #B3B3B3;
+	font-family: Segoe TV;
+	overflow: hidden;
+	margin: 0px;
+}
+
+#headerArea
+{
+	height: 50;
+	width: 560;
+	background-image: url(msntv:/Photo/Assets/PhotoHeader.jpg);
+}
+
+.opwTitle
+{
+	left: 5px;
+	color: #FFFFFF;
+	font-size:18px;
+	font-family:Highway;
+	font-weight:bold;
+}
+
+.header
+{
+	color: #C4C2C4;
+	font-size:17px;
+	font-family:Highway;
+	width:300px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+#footerArea
+{
+	position: absolute;
+	height: 45;
+	width: 560;
+	background-image: url(msntv:/Photo/Assets/PhotosNavBG.jpg);
+	bottom: 0px;
+	text-align:right;
+}
+</style>
+<script language="javascript" src="msntv:/javascript/TVShell.js"></script>
+<script language="Javascript" src="msntv:/Javascript/PanelImpl.js"></script>
+<script language="javascript">
+
+var CASEINSENSITIVE = 0x00000008;
+var IGNOREFUNCNOTEXIST = true;
+var FINALPAGEURL = "msntv:/opw/opwfinalpage.html";
+var mainpanel=PanelManager.Item("main");
+var Sink = new ActiveXObject("MSNTV.MultipleEventSink");
+var g_uploaded = 0;
+var g_returnURL=null;
+var g_uploadOK = 0;
+
+
+function getTransferManifest()
+{
+	var xml = window.external.Property("TransferManifest");
+	if ( xml != null ){
+		var manifestNode = xml.selectSingleNode("transfermanifest");
+		TVShell.Message( manifestNode.xml);
+		var filelistNode = manifestNode.selectSingleNode("filelist");
+		var fileNodes = filelistNode.selectNodes("file");
+		if ( fileNodes && fileNodes.length > 0){
+			var j;
+			TVShell.Message("    Total photos:  " + fileNodes.length);
+			for ( j=0; j < fileNodes.length; j++){
+				var fileNode = fileNodes.item(j);
+				TVShell.Message(fileNode.xml);
+				var metadataNode = fileNode.selectSingleNode("metadata");
+				if ( metadataNode )
+					TVShell.Message( "   " + metadataNode.xml);
+				else
+					TVShell.Message("    NO <metadata> element");
+				var postNode = fileNode.selectSingleNode("post");
+				if ( postNode ){
+					TVShell.Message( postNode.xml );
+					var postNode_FileName = postNode.getAttribute("filename");
+					var postNode_Name = postNode.getAttribute("name");
+					var formdataNodes = postNode.selectNodes("formdata");
+					TVShell.Message("    <post> attributes        filename=" + postNode_FileName + "   name=" + postNode_Name);
+					var i;
+					var formNode;
+					if ( formdataNodes && formdataNodes.length > 0 )
+						for ( i=0; i < formdataNodes.length; i++){
+							formNode = formdataNodes.item(i);
+							TVShell.Message( formNode.xml);	
+						}
+					else
+						TVShell.Message("     NO  <formdata> elements");
+				}
+				else
+					TVShell.Message("    NO <post> element");
+			}
+		}
+
+		var uploadInfoNode = manifestNode.selectSingleNode("uploadinfo");
+		if ( uploadInfoNode ){
+			TVShell.Message( uploadInfoNode.xml );
+			var htmluiNode = uploadInfoNode.selectSingleNode("htmlui");
+			if ( htmluiNode )
+				TVShell.Message( htmluiNode.xml);
+			else
+				TVShell.Message("   NO <htmlui>  element");
+
+			var successpageNode = uploadInfoNode.selectSingleNode("successpage");
+			if ( successpageNode )
+				TVShell.Message( successpageNode.xml);
+			else
+				TVShell.Message("   NO <successpage>  element");
+
+			var cancelledpageNode = uploadInfoNode.selectSingleNode("cancelledpage");
+			if ( cancelledpageNode )
+				TVShell.Message( cancelledpageNode.xml);
+			else
+				TVShell.Message("   NO <cancelledpageNode>  element");
+
+			var failurepageNode = uploadInfoNode.selectSingleNode("failurepage");
+			if ( failurepageNode )
+				TVShell.Message( failurepageNode.xml);
+			else
+				TVShell.Message("   NO <failurepageNode>  element");
+
+			
+		}
+		else
+			TVShell.Message("   NO <uploadinfo>  element");
+		alert(xml.documentElement.xml );
+	}
+	else
+		alert("NO Transfer Manifest found");
+}
+
+
+function setUploadOK(val)
+{
+	g_uploadOK = val;
+}
+
+
+
+function setIFrameScrolling()
+{
+	var providerIframe = TVShell.PanelManager.GetChildFrameDoc(document, document.all.provider);
+
+	if ( providerIframe.readyState == "complete" ){
+		document.body.delegate = providerIframe.body;
+	}
+}
+
+
+function backClicked()
+{
+	TVShell.Message("backClicked");
+	var obj = document.getElementById("provider");
+
+	mainPanel.InvokeFrameScriptFunc(obj,"onBack",CASEINSENSITIVE, !IGNOREFUNCNOTEXIST);
+}
+
+
+function nextClicked()
+{
+	TVShell.Message("nextClicked");
+	var obj = document.getElementById("provider");
+
+	if ( document.all.nextButton.label == "Next" ){
+		mainPanel.InvokeFrameScriptFunc(obj,"onNext",CASEINSENSITIVE, !IGNOREFUNCNOTEXIST);
+	}
+	else{
+		history.go( g_returnURL );
+	}
+
+}
+
+
+function cancelClicked()
+{
+	TVShell.Message("cancelClicked");
+	var obj = document.getElementById("provider");
+	var providerURL = null;
+
+	try{
+		providerURL = provider.location.href;
+		providerURL = providerURL.toLowerCase();
+	}
+	catch (e)
+	{
+		providerURL = null;
+	}
+		
+	var xml = window.external.Property("TransferManifest");
+	var cancelURLNode = xml.selectSingleNode("//transfermanifest/uploadinfo/cancelledpage");
+
+	mainPanel.InvokeFrameScriptFunc(obj,"onCancel",CASEINSENSITIVE, IGNOREFUNCNOTEXIST);
+
+	if ( providerURL && (providerURL.indexOf("opwcreatemanifest") > 0 || providerURL.indexOf("opwfinalpage") > 0)){
+		history.go( g_returnURL );
+		return;
+	}
+	else if ( g_uploaded == 1 && providerURL && providerURL.indexOf("opwupload") > 0 && cancelURLNode ){
+		// let upload take care of the cancel
+		return;
+	}
+
+	var msgParam = "";
+	if ( nextButton.disabled &&  backButton.disabled && g_uploadOK == 1 )
+		msgParam = "?msg=incomplete";
+	else if ( g_uploadOK != 1 )
+		msgParam = "?msg=cancel";
+	
+	provider.location.href = FINALPAGEURL + msgParam;
+}
+
+function OnOPWSetWizardButtons(back, next, lastPage)
+{
+	TVShell.Message("    OnOPWSetWizardButtons    back=" + (back? "true" : "false") + "  next=" + (next? "true" : "false") + "  lastPage= " + (lastPage? "true" : "false"));
+	var nextButt = document.getElementById("nextButton");
+	var backButt = document.getElementById("backButton");
+	if ( nextButt && backButt ){
+		nextButt.label = "Next";
+		backButt.disabled = ! back;
+		nextButt.disabled = ! next;
+		if ( next == 0 && lastPage != 0){
+			nextButt.disabled = !lastPage;
+			nextButt.label = "Finish";
+		}
+
+		if ( ! nextButt.disabled )
+			nextButt.focus();
+		else
+			document.getElementById("cancelButton").focus();
+	}
+}
+
+
+
+function OnOPWSetHeaderText(title, subtitle)
+{
+	var theHeader = document.getElementById("header");
+	theHeader.innerText = title;
+}
+
+function OnOPWFinalNext()
+{
+	if ( g_uploaded == 0 ){
+		provider.location.href = "msntv:/opw/opwupload.html";
+		g_uploaded = 1;
+	}
+	else{
+		// show the final page, since uploaded page has been called.
+		provider.location.href = FINALPAGEURL;
+	}
+}
+
+
+
+function OnOPWFinalBack()
+{
+	// back was pressed before uploading files, show the provider list
+	provider.location.href = "msntv:/opw/opwcreatemanifest.html?nouploadtime=1";
+	g_uploaded = 0;
+}
+
+
+function OnOPWCancel()
+{
+	provider.location.href = FINALPAGEURL + "?msg=cancel";
+}
+
+
+
+function providerOnLoad()
+{
+	window.setTimeout("setIFrameScrolling();", 100);
+}
+
+
+
+function onload()
+{
+	mainpanel.NoBackToMe = true;
+	OnOPWSetWizardButtons(false,false,false);
+	var currentURL = document.location.href;
+	var ruIdx = currentURL.indexOf("ru=");
+	g_returnURL = currentURL.substr( ruIdx + 3 );
+	
+	if(TVShell.SystemInfo.Flavor == "internal"||TVShell.SystemInfo.Flavor == "debug"){
+		transferButton.style.visibility = "visible";
+	}
+	setIFrameScrolling();
+}
+
+
+function cleanup()
+{
+	TVShell.Message("OPWMain.html:   cleanup()");
+	var xml = window.external.Property("TransferManifest");
+	xml.async = false;
+
+	// reset the manifest
+	xml.load("msntv:/OPW/OPWManifestTemplate.xml");
+}
+
+
+
+Sink.AttachEvent(PanelManager, "OnOPWSetWizardButtons", OnOPWSetWizardButtons);
+Sink.AttachEvent(PanelManager, "OnOPWSetHeaderText", OnOPWSetHeaderText);
+Sink.AttachEvent(PanelManager, "OnOPWFinalNext", OnOPWFinalNext);
+Sink.AttachEvent(PanelManager, "OnOPWFinalBack", OnOPWFinalBack);
+Sink.AttachEvent(PanelManager, "OnOPWCancel", OnOPWCancel);
+
+</script>
+</head>
+<body onload="onload();" onUnload="cleanup();" style="behavior: url(msntv:/HTC/ScrollDelegator.htc);">
+<div id="headerArea" style="v-align:center">
+	<table cellspacing=0 cellpadding=0 width=100% height=100% style="padding-left:5px">
+	<tr height=100%>
+	<td width=22% ><div id="opwtitle" class="opwTitle">Order Prints</div></td>
+	<td width=3% style="color:#C4C2C4">-</td>
+	<td><div id="header" class="header"></div></td>
+	</tr></table>
+</div>
+<div>
+<iframe id="provider" name="provider" src="msntv:/opw/OPWCreateManifest.html" onload="providerOnLoad();" width="560" height="290" frameborder="0" scrolling="auto"></iframe>
+</div>
+<div id="footerArea">
+	<table width="100%">
+		<tr><td height="8"></td></tr>
+	</table>
+	<msntv:CustomButton id="transferButton" label="Transfer Manifest" onclick="getTransferManifest();" style="visibility:hidden;" />
+	<msntv:CustomButton id="backButton" label="Back" onclick="backClicked();" />
+	<msntv:CustomButton id="nextButton" label="Next" onclick="nextClicked();" />
+	<msntv:CustomButton id="cancelButton" label="Cancel" onclick="cancelClicked();" />
+</div>
+</body>
+</html>

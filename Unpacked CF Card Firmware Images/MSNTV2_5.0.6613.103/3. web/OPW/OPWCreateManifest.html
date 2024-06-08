@@ -1,0 +1,164 @@
+<html>
+<head>
+<title>Create Manifest</title>
+<script language="javascript" src="msntv:/javascript/TVShell.js"></script>
+
+<script language="javascript">
+var ContentSync				= new ActiveXObject("MSNTV.ContentSync");
+var userDataPath			= ContentSync.UserDataPath;
+var tempDir					= ContentSync.TempPath;
+var thumbnailManager		= TVShell.ThumbnailManager;
+var utilities				= TVShell.Utilities;
+
+function getTransferManifest()
+{
+	var xml = window.external.Property("TransferManifest");
+	if ( xml != null ){
+		alert("retrieved Transfer Manifest   " + xml.documentElement.xml );
+	}
+}
+
+
+function resetManifest()
+{
+	var xml = window.external.Property("TransferManifest");
+	xml.async = false;
+	xml.load("msntv:/OPW/OPWManifestTemplate.xml");
+}
+
+
+
+function createManifest()
+{
+	var selectedImageFileName = tempDir + "\\photo\\OPWImageList.txt";
+	var allImageFileNames = utilities.ReadTextFile(selectedImageFileName);
+	if(allImageFileNames)
+	{
+		var ImageFilenames = allImageFileNames.split('\n');
+//		alert("total images selected: " + ImageFilenames.length - 1);
+		for ( i=0; i < (ImageFilenames.length - 1); i++ )
+				addFileToManifest( ImageFilenames[i], i);
+	}
+}
+
+
+function addFileToManifest( fName, idx )
+{
+	var theWidth = thumbnailManager.GetImageWidth(fName);
+	var theHeight = thumbnailManager.GetImageHeight(fName);
+	var theSize = utilities.DetermineFileSize(fName);
+	var crackFile = fName.split("\\");
+	var xml = window.external.Property("TransferManifest");
+	var fileList = xml.selectSingleNode("//filelist");
+	var fileNode = xml.createNode(1,"file","");
+	fileNode.setAttribute("id",idx);
+	fileNode.setAttribute("source","file://" + fName);
+	fileNode.setAttribute("destination",crackFile[crackFile.length-1]);
+	fileNode.setAttribute("size",theSize);
+	
+	var metadataNode = xml.createNode(1,"metadata", "");
+	var imageXNode = xml.createNode(1,"imageproperty","");
+	var imageYNode = xml.createNode(1,"imageproperty","");
+	
+	imageXNode.setAttribute("id","cx");
+	imageYNode.setAttribute("id","cy");
+	imageXNode.text = theWidth;
+	imageYNode.text = theHeight;
+	
+	metadataNode.appendChild(imageXNode);
+	metadataNode.appendChild(imageYNode);
+	fileNode.appendChild( metadataNode );
+	fileList.appendChild( fileNode );
+
+//	alert(xml.documentElement.xml);	
+}
+
+
+function showStatus(msg)
+{
+	TVShell.Message(msg);
+	document.all.providersDiv.innerHTML = msg;
+}
+
+
+function getServiceProviders()
+{
+	var xmlHttpReq = new ActiveXObject("Microsoft.XMLHTTP");
+	
+	xmlHttpReq.open("GET", "http://shell.windows.com/publishwizard/usa.xml", false);
+	xmlHttpReq.send(null);
+	var theXml = xmlHttpReq.responseXML;
+	var providerListNode = theXml.selectNodes('//providers[@scope="InternetPhotoPrinting"]/provider');
+	if ( xmlHttpReq.status != 200 ){
+		showStatus("Unable to retrive provide list... " + xmlHttpReq.status);
+		hardcodedProvider.style.display="block";
+		return;
+	}
+	else
+		showStatus("Retrieved provider list.");
+		
+	var strArray;
+	strArray = new Array();
+	var ii=0;
+	var aNode;
+	strArray[ii++] = "<table border=1>";
+	for ( i=0; i< providerListNode.length; i++){
+		aNode = providerListNode.item(i);
+		strArray[ii++] = "<tr><td><a href=\"";
+		strArray[ii++] = aNode.getAttribute("href");
+		strArray[ii++] = "\"><table><tr><td><b>";
+		strArray[ii++] = aNode.selectSingleNode("strings/string[@id='displayname']").text;
+		strArray[ii++] = "</b></td></tr><tr><td>";
+		strArray[ii++] = aNode.selectSingleNode("strings/string[@id='description']").text;
+		strArray[ii++] = "</td></tr></table></a></td></tr>";
+	}
+	strArray[ii++] = "</table>";
+	document.all.providersDiv.innerHTML = strArray.join("");
+}
+
+function init()
+{
+	showStatus("Creating transfer manifest...");
+	resetManifest();
+	createManifest();
+	
+	var oButton = document.getElementById("manifestButton");
+	oButton.disabled = false;
+	
+	showStatus("Retriving service provider list...");
+	getServiceProviders();
+}
+
+function onload()
+{
+	var oButton = document.getElementById("manifestButton");
+	oButton.disabled = true;
+	
+	showStatus("Please wait...");
+}
+
+</script>
+</head>
+<body onload="onload()">
+
+<table>
+<tr>
+	<td>Retrieve Transfer Manifest XML</td>
+	<td><input type="button" value="View" onclick="getTransferManifest();" ID="manifestButton"></td>
+</tr>
+</table>
+<h3>Select a printing company</h3>
+<div id="providersDiv"></div>
+<br>
+<div id="hardcodedProvider" style="display:none;">
+<a href="http://www.shutterfly.com/xp/">Shutterfly</a>
+<br>
+<a href="http://opw.digitalcameradeveloping.com">Fujifilm</a>
+<br>
+<a href="http://www.kodakgallery.com/WWLoginAction.jsp?sourceid=1209545714">Kodak EasyShare Galley (formerly Ofoto)</a>
+</div>
+<script>
+	setTimeout("init();",100);
+</script>
+</body>
+</html>

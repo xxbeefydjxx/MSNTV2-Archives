@@ -1,0 +1,56 @@
+<HTML xmlns:msntv>
+<HEAD>
+<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../HTC/SettingsHeading.htc">
+<TITLE>Spooky Dialing Options</TITLE>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/TVShell.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/ConnectionManager.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/SettingsTemplate.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/ServiceList.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="msntv:/Javascript/MSNTVService.js"></SCRIPT>
+
+<LINK REL=StyleSheet TYPE="text/css" HREF="../CSS/Settings.css">
+</HEAD>
+
+<BODY onLoad="onLoadPage();">
+<SCRIPT>OpenSettingsTable( "Settings" , "Spooky Dialing Options" , "" , true );</SCRIPT>
+<DIV id=buttonBar>
+	<msntv:CustomButton href="javascript:GotoSignOn()" class=buttonBarButton id=Cancel label="Cancel" />
+	<msntv:CustomButton href="javascript:submit()" class=buttonBarButton id=Done label="Save Changes" />
+</DIV>
+
+<DIV id=nonScrollArea>
+	<DIV class=description>
+
+	<form name="SpookyForm">
+		<TABLE class=controlTable>
+		<TR><TD colspan=2 height=10px></TD></TR>
+		<TR>
+			<TD>Registration number:
+			<TD><input type=text id=TollFreeNumber class=inputText>
+		</TR>
+		</TABLE>
+	</form>
+
+	</DIV>
+</DIV>
+<SCRIPT>CloseSettingsTable();</SCRIPT>
+
+<SCRIPT>
+var Settings = TVShell.ConnectionManager.ModemAdapter.Settings;
+
+function onLoadPage()
+{
+	SpookyForm.TollFreeNumber.value = Settings.TollFreeNumber;
+	SpookyForm.TollFreeNumber.focus();
+}
+
+function submit()
+{
+	Settings.TollFreeNumber = SpookyForm.TollFreeNumber.value;
+	TVShell.ConnectionManager.Save();
+	GotoSignOn();
+}
+</SCRIPT>
+
+</BODY>

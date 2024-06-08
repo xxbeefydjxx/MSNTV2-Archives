@@ -1,0 +1,93 @@
+<HTML xmlns:msntv>
+<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../../HTC/SettingsHeading.htc">
+<HEAD>
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=iso-8859-1">
+<TITLE>Connect History</TITLE>
+<link rel="StyleSheet" type="text/css" href="../CSS/Settings.css">
+
+<SCRIPT language=Javascript src="../Javascript/TVShell.js"></SCRIPT>
+<SCRIPT language=Javascript src="../Javascript/ConnectionManager.js"></SCRIPT>
+
+<STYLE TYPE="text/css">
+A:link
+{
+	color:blue;
+}
+A:visited
+{
+	color:blue;
+}
+</STYLE>
+
+<SCRIPT>
+var Attempts = NumberOfConnectionAttempts(CurrentWANConnectionType());
+
+function GotoAttemptDetails(index)
+{
+	document.location = "msntv:/Settings/ConnectAttempt.html?Index=" + index;
+}
+</SCRIPT>
+</HEAD>
+
+<BODY>
+<msntv:SettingsHeading label="Service Connection History" />
+
+<DIV id=nonScrollArea>
+<SCRIPT>
+function WriteConnectionAttempt(index)
+{
+	var AE = GetConnectionAttempt(index, CurrentWANConnectionType());
+
+	if (!AE) {
+		return;
+	} else {
+		var FailedSignonAttribute = FailedToSignOn(AE)?"BGCOLOR='white'":"";
+		var NarrowbandTableEntry = CurrentWANConnectionType() == ConnectionType_Narrowband?"<td>" + FormatDialedNumber(AE.phoneNumber) + "</td>":"";
+		var RXBaudText = CurrentWANConnectionType() == ConnectionType_Narrowband?"<td>" + AE.rxRate + "</td>":"";
+
+		document.write("<tr " + FailedSignonAttribute + "><td><a href='javascript:GotoAttemptDetails(" + index + ");'>" + AE.errorCode + 
+		"</a></td><td>" + AE.date + "</td>" + RXBaudText + NarrowbandTableEntry + "</tr>");
+	}
+}
+
+var ConnectionTypeText = TVShell.ConnectionManager.WANProvider == BYOAEthernetProviderName?"broadband adapter":"telephone modem";
+
+if (Attempts == 1) {
+	document.write("You are currently connecting to the service using the " + ConnectionTypeText + ".  Below is your most recent " + 
+	ConnectionTypeText + " connection attempt.  Select the blue <EM>Code</EM> from the left column below to view details of that connection attempt.");
+} else if (Attempts) {
+	document.write("You are currently connecting to the service using the " + ConnectionTypeText + ".  Below are your most recent " + Attempts + " " + 
+	ConnectionTypeText + " connection attempts.  Select a blue <EM>Code</EM> from the left column below to view details of that connection attempt.");
+} else {
+	document.write("You are configured to connect to the service using the " + ConnectionTypeText + ".  There are currently no recorded connection attempts.");
+}
+
+if (Attempts) {
+	var i;
+
+	document.write("<br><br><table class=options>");
+
+	if (CurrentWANConnectionType() == ConnectionType_Narrowband) {
+		document.write("<tr  ALIGN=center><td></td><td>Date and Time</td><td>Rate</td><td>Number</td></tr>");
+	} else {
+		document.write("<tr  ALIGN=center><td></td><td>Date and Time</td></tr>");
+	}
+
+	for (i=Attempts-1; i>=0; i--) {
+		WriteConnectionAttempt(i);
+	}
+
+	document.write("</table>");
+}
+</SCRIPT>
+
+</div>
+<div id="buttonBar">
+	<msntv:CustomButton id=default label="Done" onClick="history.go(-1);" />
+
+	<SCRIPT>
+		document.all("default").focus();
+	</SCRIPT>
+</div>
+</BODY>

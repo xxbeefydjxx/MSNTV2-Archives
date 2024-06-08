@@ -1,0 +1,134 @@
+<HTML xmlns:msntv>
+<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../HTC/SettingsHeading.htc">
+
+<HEAD>
+<TITLE>Access Numbers</TITLE>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/TVShell.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/ConnectionManager.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/SettingsTemplate.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="msntv:/msntv_progress_loc.js"></SCRIPT>
+<SCRIPT language="Javascript" src="../Javascript/ProgressPanel.js"></SCRIPT>
+
+<LINK REL=StyleSheet TYPE="text/css" HREF="../CSS/Settings.css">
+</HEAD>
+
+<BODY>
+<SCRIPT>OpenSettingsTable( "Settings" , "Your " + ServiceShortName + " access numbers" , "" );</SCRIPT>
+
+<SCRIPT>
+function GotoHomeNumber()
+{
+	document.location = "GetHomeNumber.html";
+}
+
+function getHomeNumber()
+{
+	var ModemSettings = TVShell.ConnectionManager.ModemAdapter.Settings;
+	var AreaCode = ModemSettings.DialingAreaCode;
+	var Exchange = ModemSettings.DialingExchange;
+	var str = "";
+
+	if ( AreaCode && ( AreaCode != "" ) && Exchange && ( Exchange != "" ) ) {
+		str = "(" + AreaCode + ")-" + Exchange + "-XXXX";
+	}
+
+	return str;
+}
+
+function displayHomePhoneLink()
+{
+	var num = getHomeNumber();
+	var txt;
+
+	if ( num != "" ) {
+		txt = "<P>Your " + ProductShortName + " is dialing from the phone number " + num + ".  To change it, choose <EM>Change home phone number</EM>.</P>";
+	} else {
+		txt = "<P>Your " + ProductShortName + " requires your home phone number.  To enter it, choose <EM>Change home phone number</EM>.</P>";
+	}
+
+	document.write( txt );
+	document.write("<UL class=links><LI><a onClick='GotoHomeNumber();'>Change home phone number</A></LI></UL>");
+}
+</SCRIPT>
+
+<DIV id=sideBar>
+	<msntv:CustomButton onclick="processContinue()" label="Continue" id="Continue" />
+	<script>document.all("Continue").focus();</script>
+</DIV>
+
+<DIV id=scrollArea>
+<DIV class=description>
+	<SCRIPT LANGUAGE=Javascript>
+	function getMoreAccessNumbers()
+	{
+		var ModemSettings = TVShell.ConnectionManager.ModemAdapter.Settings;
+		var AreaCode = ModemSettings.DialingAreaCode;
+		var Exchange = ModemSettings.DialingExchange;
+
+		if(ConnectState_Connected == TVShell.ConnectionManager.WANState &&
+			AdapterType_Modem == TVShell.ConnectionManager.WANAdapter.Type) {
+			SetProgressStopFunction(null);
+			SetProgressText("Please wait while we find nearby dial-up access numbers." );
+			SetProgressPercent(0);
+			ShowProgressPanel();
+			SetProgressPercent(50);
+			TVShell.ConnectionManager.MSNIASettings.PhonebookID = "";
+			TVShell.ConnectionManager.MSNIAManager.CurrentConnector.Poptimize("0", AreaCode, Exchange);
+			SetProgressPercent(100);
+			TVShell.ConnectionManager.WANAdapter.ErrorCode = ConnectError_DialSettingsStale;
+			// HideProgressPanel();  The disconnect will hide the progress panel
+		} else {
+			ClearLocalPopPhoneBook();
+			LoginToService();
+		}
+	}
+
+	var Connector = TVShell.ConnectionManager.MSNIAManager.CurrentConnector;
+	var strOutOfDate = "<P>Your " + ProductShortName + " needs Internet access numbers to connect to the " + ServiceFullName + ".</P>";
+
+	if (Connector && (Connector.Name != LocalConnectorName)) {
+		var Connector2 = GetConnectorByName(LocalConnectorName);
+
+		if (Connector2) {
+			Connector = Connector2;
+		}
+	}
+	
+	if (Connector && Connector.Name == LocalConnectorName) {
+		var Phonebook = Connector.Phonebook;	
+
+		if (Phonebook.Count == 0) {
+			document.all.Continue.label = "Done";
+			document.write( strOutOfDate );
+			document.write("<UL class=links><LI><a onClick='getMoreAccessNumbers()'>Get more access numbers</A></LI></UL>");
+			displayHomePhoneLink();
+		} else {
+			document.write("<P>Choose <EM>Continue</EM> to view the access numbers your " + ProductShortName + " dials to connect to the " + ServiceFullName + ".</P>");
+			displayHomePhoneLink();
+		}
+	} else {
+		document.all.Continue.label = "Done";
+		document.write( strOutOfDate );
+		document.write("<UL class=links><LI><a onClick='getMoreAccessNumbers()'>Get more access numbers</A></LI></UL>");
+		displayHomePhoneLink();
+	}
+	</SCRIPT>
+</DIV>
+</DIV>
+
+<SCRIPT>CloseSettingsTable();</SCRIPT>
+
+</BODY>
+
+<SCRIPT LANGUAGE=Javascript>
+function processContinue()
+{
+	if ("Done" == document.all.Continue.label) {
+		history.go(-1);
+	} else {
+		TVShell.PanelManager.Item('main').NoBackToMe = true;
+		document.location = "AccessNumbers2.html";
+	}
+}
+</SCRIPT>

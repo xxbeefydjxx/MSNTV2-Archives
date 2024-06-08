@@ -1,0 +1,35 @@
+<html xmlns:msntv>
+<head>
+	<title>CustService</title>
+	<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+	<?IMPORT namespace="msntv" implementation="MSNTVPaneHelpHeading.htc">
+	<SCRIPT LANGUAGE=Javascript SRC="../Javascript/TVShell.js"></SCRIPT>
+	<SCRIPT LANGUAGE=Javascript SRC="msntv:/msntv_help_loc.js"></SCRIPT>
+	<SCRIPT LANGUAGE=Javascript SRC="msntv:/msntv_common_loc.js"></SCRIPT>
+	<link REL=StyleSheet TYPE="text/css" HREF="MSNTVPaneHelp.css">
+</head>
+<body>
+
+<!--
+<msntv:MSNTVPaneHelpHeading id="labelID" showScrollTop="true" />
+<script>document.all.labelID.label = L_HELP_LABEL;</script>
+<script>document.all.labelID.label2 = L_HELP_MORE_ITEM2_LABEL2;</script>
+-->
+<script>
+document.write("<msntv:MSNTVPaneHelpHeading label='" + L_HELP_LABEL +"' label2='" + L_HELP_MORE_ITEM2_LABEL2 + "' showScrollTop='true' />");
+</script>
+
+<div id="ScrollArea">
+	<span class="description">
+ 	<script>document.write(L_HELP_MORE_ITEM2_TEXT);</script>
+	</span>
+</div>
+
+<div id="sideBar">
+	<msntv:CustomButton onclick="history.go(-1)" id="doneID"/>
+	<script>document.all("doneID").label =  L_BUTTON_DONE;</script>
+	<script>document.all("doneID").focus();</script>
+</div>
+
+</body>
+</html>

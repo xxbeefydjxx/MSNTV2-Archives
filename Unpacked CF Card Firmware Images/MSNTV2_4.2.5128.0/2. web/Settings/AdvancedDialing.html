@@ -1,0 +1,79 @@
+<HTML xmlns:msntv>
+<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../HTC/SettingsHeading.htc">
+<TITLE>Advanced Dialing</TITLE>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/TVShell.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/ServiceList.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/ConnectionManager.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/SettingsTemplate.js"></SCRIPT>
+
+<LINK REL=StyleSheet TYPE="text/css" HREF="../CSS/Settings.css">
+</HEAD>
+
+<BODY onLoad="onLoadPage();">
+<FORM name="dialSettingsForm">
+<SCRIPT>OpenSettingsTable( "Settings" , "Advanced dialing options" , "" , true);</SCRIPT>
+
+	<DIV id=buttonBar>
+		<msntv:CustomButton href="javascript:history.go(-1)" class=buttonBarButton id="default" label="Cancel" />
+		<msntv:CustomButton href="javascript:submitChanges()" class=buttonBarButton id=Done label="Continue" />
+		<script>document.all("Done").focus();</script>
+	</DIV>
+
+	<DIV id=nonScrollArea>
+		<DIV id=subTitle>Wait for dial tone</DIV>
+		<DIV class=description>
+			Normally, your <SCRIPT>document.write(ProductShortName);</SCRIPT> will not try to connect
+			to the <SCRIPT>document.write(ServiceFullName);</SCRIPT>'s until it detects a dial
+			tone on your phone line.
+			<P>
+			If you are unable to connect and have voice mail service on your phone
+			line, try choosing <EM>Don't wait for dial tone
+			before connecting</EM>.<BR>
+			<TABLE class=controlTable>
+			<TR>
+				<TD><INPUT type=radio name=WaitForDialTone checked> 
+				<TD>Wait for dial tone before connecting
+			</TR>
+			<TR>
+				<TD><INPUT type=radio name=WaitForDialTone>
+				<TD>Don't wait for dial tone before connecting
+			</TR>
+			</TABLE>
+		</DIV>
+	</DIV>
+<SCRIPT>CloseSettingsTable();</SCRIPT>
+	
+</FORM>
+</BODY>
+
+<SCRIPT>
+var ModemSettings = TVShell.ConnectionManager.ModemAdapter.Settings;
+
+function onLoadPage()
+{
+	if (!ModemSettings.WaitForDialTone) {
+		document.dialSettingsForm.WaitForDialTone[1].checked = true;
+	} else {
+		document.dialSettingsForm.WaitForDialTone[0].checked = true;
+	}
+}
+
+function submitChanges() 
+{
+	var oldWait = ModemSettings.WaitForDialTone;
+	
+	if (document.dialSettingsForm.WaitForDialTone[0].checked) {
+		ModemSettings.WaitForDialTone = true;
+	} else {
+		ModemSettings.WaitForDialTone = false;
+	}
+
+	document.location = "AudibleDialing.html";	// calling this early (before the save) in order to turn the selection green faster
+
+	if (oldWait != ModemSettings.WaitForDialTone) {
+		ConnectionManagerSave();
+	}
+}
+</SCRIPT>
+

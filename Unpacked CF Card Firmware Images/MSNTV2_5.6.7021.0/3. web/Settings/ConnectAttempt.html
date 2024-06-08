@@ -1,0 +1,124 @@
+<HTML xmlns:msntv>
+<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../../HTC/SettingsHeading.htc">
+<HEAD>
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=iso-8859-1">
+<TITLE>Connect Attempt</TITLE>
+<link rel="StyleSheet" type="text/css" href="../CSS/Settings.css">
+
+<SCRIPT language=Javascript src="../Javascript/TVShell.js"></SCRIPT>
+<SCRIPT language=Javascript src="../Javascript/ConnectionManager.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/parameters.js"></SCRIPT>
+<SCRIPT language=Javascript src="../Javascript/ConnectionErrors.js"></SCRIPT>
+
+<SCRIPT>
+var parameters = FindParameters(TVShell.PanelManager);
+var Index = parameters["Index"];
+var Attempt = GetConnectionAttempt(Index, CurrentWANConnectionType());
+
+SetErrorMode("WAN");
+SetErrorCode(Attempt.errorCode);
+
+function Init()
+{
+	if (Attempt.errorCode == ConnectError_NoError ||
+		Attempt.errorCode == ConnectError_DialNextNumber) {
+		document.all.viewError.disabled = true;
+	}
+}
+
+function GotoError(errorCode)
+{
+	if (errorCode == ConnectError_SlowConnectionRedial) {
+		document.location = "msntv:/Connecting/SlowNarrowbandConnection.html?FromConnectionHistory=true&BaudRate=" + Attempt.rxRate;
+	} else {
+		document.location = "msntv:/Connecting/ConnectError.html?ErrorMode=WAN&ErrorCode=" + errorCode + "&FromHistory=true";
+	}
+}
+
+function NormalizeTimeFields(field)
+{
+	if (field >= 0 && field <= 9) {
+		field = "0" + field;
+	}
+
+	return field;
+}
+
+function DurationText(duration)
+{
+	var durationText = "";
+
+	if (duration <= 0) {
+		return "";
+	}
+
+	var days = Math.floor(duration/(1000*60*60*24));
+	var hours = NormalizeTimeFields(Math.floor((duration = duration % (1000*60*60*24))/(1000*60*60)));
+	var minutes = NormalizeTimeFields(Math.floor((duration = duration % (1000*60*60))/(1000*60)));
+	var seconds = NormalizeTimeFields(Math.floor((duration % (1000*60))/1000));
+
+	if (days) {
+		if (1 == days) {
+			durationText = days + " day ";
+		} else {
+			durationText = days + " days ";
+		}
+	}
+
+	durationText += hours + ":" + minutes + ":" + seconds;
+	return durationText;
+}
+</SCRIPT>
+</HEAD>
+
+<BODY class=fullPage onload="Init();">
+<msntv:SettingsHeading label="Service Connection Attempt" />
+
+<div id="nonScrollArea">
+<SCRIPT>
+var ConnectionTypeText = TVShell.ConnectionManager.WANProvider == BYOAEthernetProviderName?"broadband":"telephone modem";
+
+document.write("<table class=options>");
+document.write("<tr></tr>");
+document.write("<tr><td COLSPAN=2>" + ShortErrorMessage() + "</td></tr>");
+
+if (Attempt.errorCode == ConnectError_RASError) {
+	document.write("<tr><td>Code</td><td>" + Attempt.errorCode + "</td></tr>");
+	document.write("<tr HEIGHT=40><td>Error subcode</td><td>" + Attempt.errorDetail + "</td></tr>");
+} else {
+	document.write("<tr HEIGHT=40><td>Code</td><td>" + Attempt.errorCode + "</td></tr>");
+}
+
+document.write("<tr><td>Signed On?</td><td>" + (Attempt.successfulSignon=="true"?"Yes":"No") + "</td></tr>");
+document.write("<tr><td>Date</td><td>" + Attempt.date + "</td></tr>");
+
+var text = DurationText(Attempt.duration);
+
+if (text != "") {
+	document.write("<tr><td>Duration</td><td>" + text + "</td></tr>");
+}
+
+if (CurrentWANConnectionType() == ConnectionType_Narrowband) {
+	document.write("<tr><td>RX Rate</td><td>" + Attempt.rxRate + "</td></tr>");
+
+	if (TVShell.SystemInfo.Flavor.toUpperCase() != "RELEASE") {
+		document.write("<tr><td>TX Rate</td><td>" + Attempt.txRate + "</td></tr>");
+	}
+
+	document.write("<tr><td>Dialed Number</td><td>" + FormatDialedNumberWithPrefixes(Attempt.phoneNumber) + "</td></tr>");
+}
+
+document.write("</table>");
+</SCRIPT>
+</div>
+
+<div id="buttonBar">
+	<msntv:CustomButton id=viewError label="View Error Page" onClick="GotoError(Attempt.errorCode);" />
+	<msntv:CustomButton id=default label="Done" onClick="history.go(-1);" />
+
+	<SCRIPT>
+		document.all("default").focus();
+	</SCRIPT>
+</div>
+</BODY>

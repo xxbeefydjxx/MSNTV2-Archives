@@ -1,0 +1,60 @@
+<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0" xmlns:ms="urn:microsoft-com:wmc-1-0">
+	
+	<specVersion>
+		<major>1</major>
+		<minor>0</minor>
+	</specVersion>
+
+	<device ms:X_MS_SupportsWMDRM="true">
+		<deviceType>urn:schemas-upnp-org:device:MediaRenderer:1</deviceType>
+		<friendlyName>MSN TV 2 Internet and Media Player : %!HOST_NAME!</friendlyName>
+		<manufacturer>RCA</manufacturer>
+		<manufacturerURL>http://www.msntv.com/</manufacturerURL>
+		<modelDescription>MSN TV 2 Internet and Media Player</modelDescription>
+		<modelName>RM4100</modelName>
+		<modelNumber>RM4100</modelNumber>
+		<modelURL>http://www.msntv.com/</modelURL>
+		<serialNumber>0000001</serialNumber>
+		<UDN>DummyUDN</UDN>
+		<UPC>00000-00001</UPC>
+
+                <iconList>
+                 <icon>
+                  <mimetype>image/png</mimetype>
+                  <width>80</width>
+                  <height>60</height>
+                  <depth>24</depth>
+                  <url>WMCDevicesPC.png</url>
+                </icon>
+               </iconList>
+
+		<serviceList>
+			<service>
+	            <serviceType>urn:schemas-upnp-org:service:ConnectionManager:1</serviceType>
+				<serviceId>urn:upnp-org:serviceId:ConnectionManager</serviceId>
+				<controlURL></controlURL>
+				<eventSubURL></eventSubURL>
+				<SCPDURL>MediaRendererConnectionManagerService.xml</SCPDURL>
+			</service>
+			<service>
+	            <serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
+				<serviceId>urn:upnp-org:serviceId:AVTransport</serviceId>
+				<controlURL></controlURL>
+				<eventSubURL></eventSubURL>
+				<SCPDURL>MediaRendererAVTransportService.xml</SCPDURL>
+			</service>
+			<service>
+	            <serviceType>urn:schemas-upnp-org:service:RenderingControl:1</serviceType>
+				<serviceId>urn:upnp-org:serviceId:RenderingControl</serviceId>
+				<controlURL></controlURL>
+				<eventSubURL></eventSubURL>
+				<SCPDURL>MediaRendererRenderingControlService.xml</SCPDURL>
+			</service>
+		</serviceList>
+		<presentationURL></presentationURL>
+		
+
+	</device>
+	
+</root>

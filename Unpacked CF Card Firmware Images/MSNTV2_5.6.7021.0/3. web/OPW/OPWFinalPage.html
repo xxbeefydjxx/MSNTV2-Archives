@@ -1,0 +1,80 @@
+<html>
+<head>
+<SCRIPT LANGUAGE=Javascript SRC="msntv:/Javascript/TVShell.js"></SCRIPT>
+<script language="javascript">
+
+function onLoad()
+{
+	window.external.SetWizardButtons(0,0,1);
+
+	var currentURL = document.location.href;
+	currentURL = currentURL.toLowerCase();
+
+	if ( currentURL.indexOf("cancel") > 0 ){
+		window.external.SetHeaderText("Order canceled","");
+		cancelMsg.style.display = "block";
+		return;
+	}if ( currentURL.indexOf("incomplete") > 0 ){
+		window.external.SetHeaderText("Order canceled","");
+		incompleteMsg.style.display = "block";
+		return;
+	}
+	else{
+		window.external.SetHeaderText("Completing your order","");
+		completeMsg.style.display = "block";
+	}
+	
+	var xml = window.external.Property("TransferManifest");
+	var uploadInfoNode = xml.selectSingleNode("transfermanifest/uploadinfo");
+	var friendlyName = null;
+	if ( uploadInfoNode )
+		friendlyName = uploadInfoNode.getAttribute("friendlyname");
+	
+	if ( friendlyName && friendlyName != "" ){
+		TVShell.Message(" friendlyName " + friendlyName);
+		providerMsg.innerHTML = friendlyName;
+		optionalMsg.style.display="block";
+	}
+	else{
+		var htmluiNode;
+		if ( uploadInfoNode )
+			htmluiNode = uploadInfoNode.selectSingleNode("htmlui");
+		var htmluitext = null;
+		var htmluiHref = null;
+		if ( htmluiNode ){
+			htmluitext = htmluiNode.text;
+			htmluiHref = htmluiNode.getAttribute("href");
+			if ( htmluiHref == null || htmluiHref == "" ){
+				var isGoodURL = /^http.*/.test(htmluitext.toLowerCase());
+				if ( isGoodURL )
+					htmluiHref = htmluitext;
+			}
+			if ( htmluiHref ){
+				providerMsg.innerHTML = "<a href=\"" + htmluiHref + "\">" + htmluitext + "</a>";
+				optionalMsg.style.display="block";
+			}
+		}
+		TVShell.Message("  htmluitext:  " + htmluitext + "  href:  " + htmluiHref);
+	}
+}
+
+</script>
+</head>
+<body onload="onLoad();">
+<div id="completeMsg" style="display:none">
+<p>Your order was successfully received and is being processed.  You will soon receive an e-mail confirmation of your order.</p>
+</div>
+<div id="cancelMsg" style="display:none">
+<p>The wizard could not copy your pictures to the printing company because the process was canceled.</p>
+<p>You have canceled your printing order.</p>
+</div>
+<div id="incompleteMsg" style="display:none">
+<p>The printing company received only part of your order.  You will soon receive an e-mail confirmation with details about your order.</p>
+<p>The e-mail contains contact information so you can follow up on your order with the printing company.</p>
+</div>
+<div id="optionalMsg" style="display:none"><p>Choose the link below to see your pictures online:</p>
+<div id="providerMsg"></div>
+</div>
+<p>To return to MSN TV Photos, choose <b>Finish</b>.</p>
+</body>
+</html>

@@ -1,0 +1,794 @@
+<html xmlns:msntv>
+<?import namespace="msntv" implementation="../HTC/CustomButton.htc">
+
+<head>
+<title>Photos SlideShow</title>
+
+<style type="text/css">
+body {
+	margin-left: 0px;
+	margin-top: 0px;
+	margin-right: 0px;
+	margin-bottom: 0px;
+	background-color:black;
+}
+</style>
+
+</head>
+
+<script LANGUAGE=Javascript SRC="msntv:/Javascript/TVShell.js"></script>
+<script LANGUAGE=Javascript SRC="msntv:/Javascript/VKCodes.js"></script>
+<script src="msntv:/Javascript/Parameters.js"></script>
+<script LANGUAGE=Javascript SRC="msntv:/Photo/Photos.js"></script>
+<script language="JavaScript" type="text/javascript">
+<!--
+
+var firstImageReady = false;
+var ssReadyReceived = false;
+
+var screenSaver = TVShell.ScreenSaver;
+var screenSaverOldState = screenSaver.Enable;
+// Turn off the screen saver and keep it from starting while
+// we are off.
+screenSaver.Stop();
+screenSaver.Enable = false;
+
+
+var DEFAULT_TRANS_TYPE	= "alpha";
+var SCREEN_WIDTH		= screen.availWidth;
+var SCREEN_HEIGHT		= screen.availHeight;
+
+var SAFE_HEIGHT			= SCREEN_HEIGHT;
+var SAFE_WIDTH			= SCREEN_WIDTH;
+var SAFE_BOTTOM			= SCREEN_HEIGHT;
+var SAFE_TOP			= 0;
+var SAFE_LEFT			= 0;
+if (TVShell.DeviceControl.UseSafeArea) 
+{
+	// Safe area excludes 1/16 of the total screen all around
+	SAFE_HEIGHT -= SCREEN_HEIGHT / 8;
+	SAFE_WIDTH  -= SCREEN_WIDTH  / 8;
+	SAFE_LEFT = (SCREEN_WIDTH -  SAFE_WIDTH)  / 2;
+	SAFE_TOP  = (SCREEN_HEIGHT - SAFE_HEIGHT) / 2;
+	SAFE_BOTTOM = SAFE_TOP + SAFE_HEIGHT;
+}
+var STATUS_HEIGHT = 36;
+var STATUS_TOP = SAFE_BOTTOM - STATUS_HEIGHT;
+
+var PHOTO_AREA_HEIGHT	= 420;
+var PHOTO_AREA_WIDTH	= 560;
+
+var XMLFileURL			= parameters.XMLFileURL;
+var START_INDEX			= parameters.startIndex;
+
+var PSL_LOADING_STRING	= "Reading:";
+var PSL_SHOWING_STRING	= "Showing:";
+var PSL_FINDING_STRING	= "Finding:";
+var PS_PLAY				= "Playing";
+var PS_PAUSED			= "Paused";
+
+var playState			= PS_PLAY;
+var playState_Index		= -1;
+
+var LS_NORMAL			= 0;
+var LS_LOADING_IMAGE	= 1;
+var LS_LOADED_IMAGE		= 2;
+var loadingState		= LS_NORMAL;
+var loadingState_Index	= -1;
+
+// Used by next/prev. This is the desired photo location.
+// The desired image index is used by the javascript to keep track
+// of where it would like the flash show to be at. It will be distinct
+// from the flash show until the show catches up with it.
+var desiredPlayState_Index = -1;;
+
+var storageDeviceVN = parameters.StorageDeviceVN;
+
+var controlPanelTimeoutID;
+var CONTROL_PANEL_TIMEOUT = 15000;
+
+
+var statusPanel  = PanelManager.Item("statusbar");
+var oldMainPanelZorder = mainPanel.ZOrder;	
+// Elongate main panel by the height of the status panel, which
+// is not to appear on slideshow
+if(statusPanel)
+{
+	mainPanel.StartRect(SAFE_LEFT, SAFE_TOP, SAFE_WIDTH, SAFE_HEIGHT);
+	mainPanel.ZOrder = statusPanel.ZOrder + 5;
+}
+
+
+var FileNameArray		= new Array();
+var nPhotos				= 0;
+var resizedImgUrlIdxMap	= new Object();
+var firstPhoto			= true;
+var tempURL = parameters.tempAllFileList;
+var onLoadTimeoutID 	= -1;
+var LOAD_TIMEOUT		= 1500;
+if(tempURL)
+{
+	var allImageFileNames = Utilities.ReadTextFile(tempURL);
+	if(allImageFileNames)
+	{
+		FileNameArray = allImageFileNames.split('\n');
+		//Truncate the last entry. It will be '' 
+		if ( FileNameArray.length > 0 )
+			FileNameArray.length--;
+		nPhotos = FileNameArray.length;
+	}
+	if ( FileNameArray.length > 0 )
+	{
+		//Just start up the other resize thread as soon as possible.
+		// See OnLoad for when we try to use this.
+		ResizeAndGetURL(FileNameArray[0], PHOTO_AREA_HEIGHT,
+		                PHOTO_AREA_WIDTH, false);
+	}
+}
+
+var PHOTO_COUNT_STRING = (nPhotos==1) ? " 1 photo" : "" + nPhotos + " photos";
+		
+for ( var i = 0 ; i < FileNameArray.length ; i++ )
+{
+	if ( FileNameArray[i] != "" )
+		resizedImgUrlIdxMap[GetResizedImgURL(FileNameArray[i])]	= i;
+}
+
+function OnLoad()
+{	
+	TVShell.Message("onLoad ");
+	
+	PhotoManager.ClearThumbnailRequestQueue();
+	PhotoManager.ClearImageResizeRequestQueue();
+		
+	if(document.all.Play)
+		document.all.Play.focus();
+
+	if ( FileNameArray.length > 0 )
+	{
+		TVShell.Message("Getting Photo '" + FileNameArray[0] + "'" );
+		Sink.AttachEvent(PhotoManager, "OnResizedImageReady"   , OnResizedFirstImage);
+		var resizedImgURL = ResizeAndGetURL(FileNameArray[0],
+		                                    PHOTO_AREA_HEIGHT,
+		                                    PHOTO_AREA_WIDTH, false);
+		TVShell.Message("Got Photo '" + resizedImgURL + "'" );
+		onLoadTimeoutID = setTimeout(OnResizedFirstImage, LOAD_TIMEOUT );
+		if (IsDefaultResizeFile(resizedImgURL) == false )
+		{
+			OnResizedFirstImage( FileNameArray[0] );
+		}
+		else
+		{
+			SlideShowRow.style.display = "none";
+			StatusRow.style.display = "block";
+			StatusStr.innerText = "Reading First Image";
+		}
+	} else {
+		TVShell.Message("\nNO FIRST PHOTO FOR SLIDESHOW!!");
+	}
+
+	Play();
+}
+
+function OnResizedFirstImage( img )
+{
+	clearTimeout(onLoadTimeoutID);
+	var resizedImgURL = ResizeAndGetURL(FileNameArray[0],
+                                    PHOTO_AREA_HEIGHT,
+                                    PHOTO_AREA_WIDTH, false);
+	Sink.DetachEvent(PhotoManager, "OnResizedImageReady"   , OnResizedFirstImage);
+	if (IsDefaultResizeFile(resizedImgURL) == false )
+	{
+		TVShell.Message("Loaded image Photo '" + resizedImgURL + "'" );
+		firstImageReady = true;
+		SlideShowRow.style.display = "block";
+		StatusRow.style.display = "none";
+		CompleteInitialization();
+	}
+	else
+	{
+		//Need to ask them if we should stop.
+		TVShell.Message("Re-attempting to load image Photo '" 
+		                + resizedImgURL + "'" );
+		onLoadTimeoutID = setTimeout(OnResizedFirstImage, LOAD_TIMEOUT );
+	}
+}
+
+function OnUnload()
+{
+	TVShell.Message("onUnload1 ");
+	
+	// restore screensaver state
+	screenSaver.Enable = screenSaverOldState;	
+	
+	PhotoManager.ClearThumbnailRequestQueue();
+	PhotoManager.ClearImageResizeRequestQueue();
+	
+	// Shorten main panel by the size of status panel
+	if(statusPanel)
+	{
+		mainPanel.StartRect(SAFE_LEFT, SAFE_TOP, SAFE_WIDTH, STATUS_TOP - SAFE_TOP);
+		mainPanel.ZOrder = oldMainPanelZorder;
+	}
+}
+
+function HandleKey()
+{
+	TVShell.Message( "event.type=" + event.type + " keyCode="+ event.keyCode );
+	if(ControlPanel.style.visibility != "visible")
+	{
+		if ( event.type == 'keydown' ) {
+			if ( event.keyCode == VK_LEFT ) {
+				Prev();
+				//Don't do default action for this key.
+				event.returnValue = false;
+				return;
+			} else if ( event.keyCode == VK_RIGHT ) {
+				Next();
+				//Don't do default action for this key.
+				event.returnValue = false;
+				return;
+			}
+		}
+		ShowControlPanel();
+		//Don't do default action for this key.
+		event.returnValue = false;
+	}
+
+	SetControlPanelTimeout();
+}
+	
+function OnServiceListKeyDown(ServiceEntry)
+{
+	// If a key is pressed to bring up a panel, then leave the slide show.
+	if (ServiceEntry.Panel && ServiceEntry.Panel != "") {
+		Done();
+		return;
+	}
+
+	if (PanelManager.FocusedPanel.Name == "main") {
+		var alertPanel = PanelManager.Item("alert");						
+		if (alertPanel && alertPanel.State == 0)
+			return;
+
+		if (ServiceEntry.name == "browser::esc") {
+			if(document.all.ControlPanel.style.visibility != "visible")
+			{
+				ShowControlPanel();
+			}
+			else
+			{
+				HideControlPanel();
+			}
+		}
+	}
+}
+
+function OnDeviceRemove(storageDevice)
+{
+	if (!storageDevice)
+		return;
+
+	TVShell.Message("SlideShow.html: Device removed: " + storageDevice.VolumeName);
+
+	if (!XMLFileURL && storageDevice.VolumeName == storageDeviceVN) {
+		alert("The content you are viewing is no longer available. Your current activity cannot be completed. Choose OK to continue.");
+		history.go("msntv:/Photo/PhotoHome.html");
+	}
+}
+
+function Play()
+{
+	if (nPhotos <= 1)
+		return;		 
+
+	if(playState != PS_PAUSED)
+		return;
+		 
+	ssResume();
+	UpdatePlayState(PS_PLAY);
+}
+
+function Pause()
+{
+	if (nPhotos <= 1)
+		return;		 
+
+	if(playState == PS_PAUSED)
+		return;
+		 
+	ssPause();
+	UpdatePlayState(PS_PAUSED);
+}
+
+function Done()
+{
+	//TVShell.Message("Done");
+	ssPause();
+	setTimeout(window.history.back, 1);
+}	
+
+function Prev()
+{
+	if (nPhotos <= 1)
+		return;		 
+
+	TVShell.Message( "\n\nENTER Prev()" );
+	desiredPlayState_Index = Decrement(GetDesiredIndex());
+
+	SetImage( desiredPlayState_Index, true );
+
+	TVShell.Message( "Leave Prev()" );
+}
+
+function Next()
+{
+	if (nPhotos <= 1)
+		return;		 
+
+	TVShell.Message( "\n\nENTER Next()" );
+	desiredPlayState_Index = Increment(GetDesiredIndex());
+
+	SetImage( desiredPlayState_Index, true );
+
+	TVShell.Message( "Leave Next()" );
+}
+
+function SetControlPanelTimeout()
+{
+	TVShell.Message( "SetControlPanelTimeout()" );
+	clearTimeout(controlPanelTimeoutID);
+	controlPanelTimeoutID =
+		setTimeout(MaybeHideControlPanel, CONTROL_PANEL_TIMEOUT);
+}
+
+function MaybeHideControlPanel()
+{
+	if ( loadingState == LS_NORMAL )
+	{
+		HideControlPanel();
+	}
+	else
+	{
+		SetControlPanelTimeout();
+	}
+}
+
+function HideControlPanel()
+{
+	TVShell.Message("hiding ");
+	ControlPanel.style.visibility = "hidden";
+	mmSlideShow.height=420;
+}
+
+function ShowControlPanel()
+{
+	TVShell.Message("showing ");
+	
+	mmSlideShow.height=359;
+	document.all.ControlPanel.style.visibility = "visible";
+	if(document.all.Play)
+		document.all.Play.focus();
+		
+	SetControlPanelTimeout();
+}
+
+function UpdatePlayState( newPlayState )
+{
+	playState = newPlayState;
+	DisplayPlayState();
+}
+
+function DisplayPlayState()
+{
+	var psText = (nPhotos == 1 ? PSL_SHOWING_STRING : playState + ":");
+	var index = playState_Index;
+
+	if ( desiredPlayState_Index != -1 )
+	{
+		index = desiredPlayState_Index;
+		psText = PSL_FINDING_STRING;
+		if ( desiredPlayState_Index == loadingState_Index &&
+		     loadingState != LS_NORMAL )
+			psText = PSL_LOADING_STRING;
+	}
+	else if ( loadingState != LS_NORMAL && loadingState_Index != -1 )
+	{
+		if ( Decrement(loadingState_Index) != playState_Index )
+		{
+			//If this is the next image, don't show the loading image text.
+			index = loadingState_Index;
+			psText = PSL_LOADING_STRING;
+		}
+	}
+
+	var cntText = (nPhotos>1) ? (index+1) + " of " + PHOTO_COUNT_STRING
+		: PHOTO_COUNT_STRING;
+	if ( index < 0 )
+		cntText = "";
+
+	if ( firstImageReady == false || ssReadyReceived == false )
+	{
+		cntText = ( nPhotos == 1 ? "Reading image ..." : "Reading first image ...");
+		psText = "";
+	}
+
+	CountStr.innerText = cntText;
+	PlayState.innerText = psText;
+
+	TVShell.Message( psText + " " + cntText );
+}
+
+function SetLoading( newLoadingState, imgIndex )
+{
+	if ( newLoadingState == LS_LOADED_IMAGE
+	     && loadingState_Index != imgIndex )
+		newLoadingState = LS_NORMAL;
+	var str = newLoadingState == LS_NORMAL ? "LS_NORMAL"
+		: newLoadingState == LS_LOADING_IMAGE ? "LS_LOADING_IMAGE"
+		: "LS_LOADED_IMAGE";
+	
+	TVShell.Message( "SetLoading(" + str + "(" + newLoadingState + "),"
+	                 + imgIndex + ")" );
+	loadingState = newLoadingState;
+	loadingState_Index = imgIndex;
+}
+
+function ToIndex( resizedImgURL )
+{
+	var idx = resizedImgUrlIdxMap[resizedImgURL];
+	if ( idx == null )
+		idx = -1;
+	return idx;
+}
+
+function GetDesiredIndex()
+{
+	var idx = desiredPlayState_Index;
+	if ( idx == -1 )
+		idx = playState_Index;
+	return idx;
+}
+
+function GetResizedImgURL( imgSrcURL )
+{
+	return ( IsInRotatedImageList(imgSrcURL) ?
+		  FormatURL(PhotoManager.GetRotatedImageURL(imgSrcURL))
+		: FormatURL(PhotoManager.GetResizedImageURL(imgSrcURL)) );
+}
+
+function Increment( value )
+{
+	value++;
+	if(value >= nPhotos)
+		value=0;
+	return value;		
+}
+
+function Decrement( value )
+{
+	value--;
+	if(value < 0)
+		value=nPhotos-1;
+	return value;		
+}
+
+var SetImage_Index = -1;
+var SetImage_SkipTo = false;
+var SetImage_reloadWhileInPauseTimeoutID
+var SetImage_RELOAD_DURING_PAUSE_TIMEOUT= 1500;
+function SetImage(imgIndex,skipTo)
+{
+	TVShell.Message( "SetImage(" + imgIndex + "," + skipTo + ")" );
+		
+	var imgSrcURL = FileNameArray[imgIndex];
+
+	//The Resize Image Queue is a LIFO. So we clear the queue, then
+	//put the most needed one last.
+	if ( SetImage_Index != imgIndex )
+	{
+		PhotoManager.ClearImageResizeRequestQueue();
+		//Queue processing of the next two images just in case
+		var nextIdx = Increment(imgIndex);
+		if ( nextIdx != imgIndex )
+			ResizeAndGetURL( FileNameArray[nextIdx],
+			                 PHOTO_AREA_HEIGHT, PHOTO_AREA_WIDTH, false);
+
+		TVShell.Message( "Rembering skipTo=" + skipTo );
+		SetImage_SkipTo = skipTo;
+		SetImage_Index = imgIndex;
+	}
+	else
+	{
+		//Use the value of the skip-to flag that was first used
+		//when trying to set this image. (This allows Next() & Prev()
+		//to work correctly even if the image isn't loaded the first time.
+		//Note, we might have done a setimage before the next() was called
+		//as would be typical in a normal mode when we queue up the next
+		//image to display. Thus we want to remember this 'true' flag
+		//over a false one.
+		if (skipTo)
+			SetImage_SkipTo = skipTo;
+		else
+			skipTo = SetImage_SkipTo;
+		TVShell.Message( "Using skipTo=" + skipTo );
+	}
+
+	clearTimeout( SetImage_reloadWhileInPauseTimeoutID );
+
+	//Now do the real one.
+	var resizedImgURL = ResizeAndGetURL_Ex(imgIndex);
+
+	if (IsDefaultResizeFile(resizedImgURL) == false )
+	{
+		ssDisablePanZoom();
+		ssNextImage(resizedImgURL);
+		if (skipTo)
+			ssSkipTo();
+		SetImage_Index = -1;
+	}
+	else
+	{
+		TVShell.Message("Image not ready " + imgSrcURL);
+		TVShell.Message("resizedImgURL='" + resizedImgURL + "'");
+
+		RedisplayImage();
+		if ( playState == PS_PAUSED )
+			SetImage_reloadWhileInPauseTimeoutID =
+				setTimeout( CheckForImage,
+				            SetImage_RELOAD_DURING_PAUSE_TIMEOUT );
+	}
+
+	DisplayPlayState();
+	return imgSrcURL;
+}	
+
+function ResizeAndGetURL_Ex(imgIndex)
+{
+	var res= ResizeAndGetURL( FileNameArray[imgIndex],
+                              PHOTO_AREA_HEIGHT,
+                              PHOTO_AREA_WIDTH, false);
+
+	if (IsDefaultResizeFile(res) == false )
+	{
+		SetLoading( LS_LOADED_IMAGE, imgIndex );
+	} else {
+		SetLoading( LS_LOADING_IMAGE, imgIndex );
+	}
+	return res;
+}
+
+function CheckForImage()
+{
+	TVShell.Message("Checking For Image " + SetImage_Index );
+	if (playState == PS_PAUSED)
+		SetImage(SetImage_Index, SetImage_SkipTo);
+}
+Sink.AttachEvent(TVShell.StorageManager,"OnDeviceRemove" , OnDeviceRemove);
+Sink.AttachEvent(TVShell, "OnServiceListKeyDown", OnServiceListKeyDown);
+		
+/*****************************************************************************/
+function CompleteInitialization()
+{
+	if (firstImageReady == false || ssReadyReceived == false)
+		return;
+	//Loaded and ready
+
+    if(!FileNameArray || FileNameArray.length <= 0)
+		return;
+		
+    TVShell.Message("CompleteInitialization");
+
+	ssDisablePanZoom();
+	ssStart();
+
+	SetImage(0,true);
+}
+
+var lastTime = new Date().getTime();
+// Function captures and parses FScommands issued from Flash
+function mmSlideShow_DoFSCommand(command, args) {
+	TVShell.Message( "\n\n" );
+	TVShell.Message( "Cmd("	+ args + "," + command + ")" );
+	var curTime = new Date().getTime();
+	TVShell.Message( "Interval =" + (curTime - lastTime) );
+	lastTime = curTime;
+
+	var mmSlideShowObj = document.all.mmSlideShow;
+	ssReadyReceived	= true;
+
+	if (command == "ssReady")
+	{
+		CompleteInitialization();
+		DisplayPlayState();
+	}
+	else if (command == "ssImageStart")
+	{
+		playState_Index=ToIndex(args);
+		if ( playState_Index == desiredPlayState_Index )
+		{
+			//The flash show has caught up to the desired location
+			desiredPlayState_Index = -1;
+		}
+		if ( playState_Index == loadingState_Index )
+		{
+			//The flash show has caught up to the loaded image.
+			loadingState_Index = -1;
+			loadingState = LS_NORMAL;
+		}
+		if ( loadingState == LS_LOADING_IMAGE )
+		{
+			//Recheck to see if the image is loaded by now.
+			ResizeAndGetURL_Ex(loadingState_Index);
+		}
+
+		var idx = -1;
+		if ( args != ssLastImage )
+		{
+			idx = ToIndex(ssLastImage);
+		}
+		else if ( desiredPlayState_Index != -1 )
+		{
+			idx = desiredPlayState_Index;
+		}
+		else if ( loadingState == LS_LOADED_IMAGE && loadingState_Index != -1 )
+		{
+			idx = loadingState_Index;
+		}
+		else
+		{
+			idx = Increment(playState_Index);
+		}
+
+		SetImage( idx, false );
+
+		if(firstPhoto)
+		{	
+			firstPhoto = false;
+			SetControlPanelTimeout();
+		}
+		DisplayPlayState();
+	}
+	else if (command == "ssReqImage")
+	{
+		//RedisplayImage();
+	}
+	else
+	{
+		TVShell.Message( "\n*\n*Unhandled command " + command + ", " + args );
+	}
+
+	TVShell.Message( "Leave Cmd(" + args + "," + command + ")" );
+}
+
+function RedisplayImage()
+{
+	if ( ssLastImage != "" )
+		ssNextImage( ssLastImage );
+}
+
+/*****************************************************************************/
+<!-- Called by OS to set the next image for the Flash show -->
+var ssLastImage = "";
+function ssNextImage( resizedImgURL )
+{
+	ssTransType( nPhotos > 1 && ssLastImage != resizedImgURL
+	             && ssLastImage != "" ? DEFAULT_TRANS_TYPE : "none" );
+
+	TVShell.Message( "ssNextImage(" + resizedImgURL + ")" );
+	ssLastImage = resizedImgURL;
+	window.document.mmSlideShow.SetVariable("_global.gsNextImage", ssLastImage);
+}
+
+<!-- Called by OS AFTER passing Flash name and path of first image -->
+function ssStart()
+{
+	TVShell.Message( "ssStart()" );
+	window.document.mmSlideShow.TCallLabel("_root.mcFunctionCaller", "frmStart");
+}
+<!-- Called by OS AFTER passing Flash name and path of image to skip to -->
+<!-- Called by OS to pause Flash -->
+function ssPause()
+{
+	TVShell.Message( "ssPause()" );
+	window.document.mmSlideShow.TCallLabel("_root.mcFunctionCaller", "frmPause");
+}
+<!-- Called by OS to resume Flash - Please call ONLY if Flash is currently paused -->
+function ssResume()
+{
+	TVShell.Message( "ssResume()" );
+	window.document.mmSlideShow.TCallLabel("_root.mcFunctionCaller", "frmResume");
+}
+<!-- Called by OS to enable Pan and Zoom -->
+<!-- PanZoom only works with "alpha" TransType. Calling this function changes TransType to "alpha"-->
+function ssEnablePanZoom()
+{
+	TVShell.Message( "ssEnablePanZoom()" );
+	window.document.mmSlideShow.SetVariable("_global.gsPanZoom", "true");
+	window.document.mmSlideShow.SetVariable("_global.gsTransType", "alpha");
+}
+<!-- Called by OS to disable Pan and Zoom -->
+<!-- This leaves TransType as "alpha" -->
+function ssDisablePanZoom()
+{
+	TVShell.Message( "ssDisablePanZoom()" );
+	window.document.mmSlideShow.SetVariable("_global.gsPanZoom", "false");
+}
+<!-- Called by OS to set TransType - Choose: "alpha", "push" or "wipe" -->
+function ssTransType(sType)
+{
+	TVShell.Message( "ssTransType(" + sType + ")" );
+	window.document.mmSlideShow.SetVariable("_global.gsTransType", sType);
+}
+
+function ssSkipTo()
+{
+	TVShell.Message( "ssSkipTo()" );
+	window.document.mmSlideShow.TCallLabel("_root.mcFunctionCaller", "frmSkipTo");
+}
+
+/*****************************************************************************/
+//-->
+</script>
+
+<body style="margin:0px; background-color:black;" onload="OnLoad();" onunload="OnUnload();" onKeydown="HandleKey();">
+
+<div>
+	<map name="NavMap1">						   
+		<area shape="RECT" coords="  0,4,  39,48" id="Play" tabindex=0 onClick="Play()">    
+		<area shape="RECT" coords=" 45,4,  84,48" id="Pause" tabindex=0 onClick="Pause()">    
+		<area shape="RECT" coords=" 90,4, 129,48" id="Prev" tabindex=0 onClick="Prev()"> 
+		<area shape="RECT" coords=" 130,4, 169,48" id="Next" tabindex=0 onClick="Next()"> 
+	</map>
+	<div id="ControlPanel" style="position:absolute; visibility:visible; top:359px; left:0px; width:100%; height:61px; display:inline-block;">
+		<table style="position:absolute; z-index:-1; top:0px; left:0px; width:100%; height:100%;" cellpadding=0 cellspacing=0 ID="Table1">
+			<tr>
+				<td style="width:15px;"><img src="../Panels/Images/PanelPlayerSmallLeftSide.jpg"></td>
+				<td style="text-align:center; vertical-align:top; background-image:url(../Panels/Images/PanelPlayerSmallMiddleStretch.jpg)"><img src="../Panels/Images/PanelPlayerSmallBG.jpg"></td>
+				<td style="width:15px;"><img src="../Panels/Images/PanelPlayerSmallRightSide.jpg"></td>
+			</tr>
+		</table>
+		<div style="width:100%; height:100%; padding:8px 15px 7px 15px;">
+			<table cellpadding="0" cellspacing="0" width=100% height="46" ID="Table3">
+				<tr>
+					<td align="top">
+						<img style="vertical-align:top" src="../Images/1x1.gif" useMap="#NavMap1" style="width:174; height:46; border:none;">
+						<div id="PlayButton"  style=" position:absolute; left:15px; top:8px; width:39px; height:44px;  behavior:url(#default#alphaImageLoader); src:url(msntv:/Media/Assets/PanelPlayerControlPlay.png);"></div>
+						<div id="PauseButton" style="position:absolute; left:60px; top:8px; width:39px; height:44px; behavior:url(#default#alphaImageLoader); src:url(msntv:/Media/Assets/PanelPlayerControlPause.png);"></div>
+						<div style="position:absolute; left:105px; top:8px; width:39px; height:44px; behavior:url(#default#alphaImageLoader); src:url(msntv:/Media/Assets/PanelPlayerControlPrev.png);"></div>
+						<div style="position:absolute; left:145px; top:8px; width:39px; height:44px;  behavior:url(#default#alphaImageLoader); src:url(msntv:/Media/Assets/PanelPlayerControlNext.png);"></div>
+					<td id="PlayState" align="right" vAlign=top style="position:absolute; left:200px; width:70px; xbackground-color:red; padding-top:10px; color:#AFC0CC; font-size:16px; font-family:segoe; font-weight:bold;"></td>
+					<td id="CountStr" align="right" vAlign=top style="position:absolute; left:290px; width:170px; xbackground-color:red; padding-top:10px; color:#AFC0CC; font-size:16px; font-family:segoe; font-weight:bold;"></td>
+					<td style="text-align:right;">					
+						<msntv:CustomButton label="Done" class="bottombarButtom" style="margin-left:15px;" id="Done" onclick="Done();"  />
+					</td>
+				</tr>
+			</table>
+		</div>
+	</div>
+</div>
+
+<script language=JavaScript event="FSCommand(command, args)" for=mmSlideShow>
+		mmSlideShow_DoFSCommand(command, args);
+</script>
+
+<table cellpadding=0 cellspacing=0 width=100% xheight=100% ID="Table2">
+	<tr id="StatusRow" style="display:none;" height="359" width="560">
+		<td id="StatusStr" align="center" vAlign=center style="xbackground-color:red; padding-top:10px; color:#AFC0CC; font-size:42px; font-family:segoe; font-weight:bold; height: 420; width: 560; behavior: url(#default#gradient); startColor:black; endcolor:#909090; angle:0;">
+		</td>
+	</tr>
+	<tr id="SlideShowRow">
+		<td align=center vAlign=middle>
+			<object id="mmSlideShow" classid="clsid:D27CDB6E-AE6D-11cf-96B8-444553540000" codebase="http://download.macromedia.com/pub/shockwave/cabs/flash/swflash.cab#version=6,0,29,0" TABINDEX=-10001 width="560" height="359"  VIEWASTEXT>
+				<param name="movie" value="file:/web/Photo/slideshow.swf" />
+				<param name="quality" value="best" />
+			</object>
+		</td>
+	</tr>
+</table>
+
+<script>
+	DisplayPlayState();
+</script>
+</body>
+</html>

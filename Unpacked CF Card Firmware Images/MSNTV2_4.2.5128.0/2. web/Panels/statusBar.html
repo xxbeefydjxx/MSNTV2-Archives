@@ -1,0 +1,386 @@
+<html xmlns:msntv>
+<?import namespace="msntv" implementation="../HTC/Progress.htc">
+
+<head>
+<meta http-equiv="Content-Language" content="en-us">
+<meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+
+<style>
+.bigNumber
+{
+	position: relative;
+	top: 4px;
+	font-size: 18px;
+	font-weight: bold;
+	color: #E6E6E6;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	margin-left: 10px;
+	margin-right: 6px;
+}
+
+.numberLabel
+{
+	position: relative;
+	top: 4px;
+	font-size: 18px;
+	color: #E6E6E6;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	margin-right: 5px;
+}
+
+.icon
+{
+	margin-left:8px;
+	margin-right: 0px;
+	width:20px;
+	height: 36px;
+	vertical-align: middle;
+	display: none;
+}
+
+#memUsage {
+	width: 100%;
+	image-animation-offset-x:0;
+}
+
+</style>
+
+<script language="javascript" src="../Javascript/TVShell.js"></script>
+<script>
+
+	document.ShowLoadIcon = function () {if(document.all.loadIcon) document.all.loadIcon.style.display = "inline-block";};
+	document.HideLoadIcon = function () {if(document.all.loadIcon) document.all.loadIcon.style.display = "none";};
+
+	MFOLDER_INBOX	= 0;
+	MLIST_ALLOW		= 1;
+	MSTATE_ONLINE	= 0x2;
+	LED_Off			= 0;
+	LED_On			= 1;
+ 
+	var Messenger	= TVShell.UserManager.CurrentUser.Messenger;
+	var Sink		= new ActiveXObject("MSNTV.MultipleEventSink");
+	var onlineCount	= -1;
+	var waitingCount = 0;
+
+	var MSTATE_UNKNOWN  = 0x0000;
+	var MSTATE_OFFLINE  = 0x0001;
+
+	// controls the available memory update
+	var MemUpdateID = 0;
+	var TotalMemBase = 0;
+	var MemUpdateInterval = 750;
+	var SysInfo = TVShell.SystemInfo;
+//	if (SysInfo.Flavor != "release") {
+//		MemUpdateID = 1;
+//	}
+
+	// controls the TCP received errors update
+	var TCPUpdateID = 0;
+	var TCPUpdateInterval = 1000;
+//	if (SysInfo.Flavor != "release") {
+//		TCPUpdateID = 1;
+//	}
+
+	// controls the UDP received errors update
+	var UDPUpdateID = 0;
+	var UDPUpdateInterval = 1000;
+//	if (SysInfo.Flavor != "release") {
+//		UDPUpdateID = 1;
+//	}
+
+	// controls the IP received errors update
+	var IPUpdateID = 0;
+	var IPUpdateInterval = 1000;
+//	if (SysInfo.Flavor != "release") {
+//		IPUpdateID = 1;
+//	}
+
+	function SetNumericElement(id, value)
+	{
+		var string = value.toString(10);
+
+		document.all[id].innerText = string;
+	}
+
+	function OnUnreadEmailChanged(folder, newUnreadEmail)
+	{
+		if (folder == MFOLDER_INBOX) {
+			SetNumericElement("emailCount", newUnreadEmail);
+			if(document.all.mailStatus)
+				document.all.mailStatus.style.display = newUnreadEmail > 0 ? "inline" : "none";
+
+			if (newUnreadEmail == 0) {
+				TVShell.DeviceControl.MessageLED = LED_Off;
+				if (TVShell.UserManager.CurrentUser.HasUnreadMail) {
+					TVShell.UserManager.CurrentUser.HasUnreadMail = false;
+					TVShell.UserManager.Save();
+				}
+			} 
+			else {
+				TVShell.DeviceControl.MessageLED = LED_On;
+				if (!TVShell.UserManager.CurrentUser.HasUnreadMail) {
+					TVShell.UserManager.CurrentUser.HasUnreadMail = true;
+					TVShell.UserManager.Save();
+				}
+			}
+		}
+	}
+ 
+	function OnUserStateChanged(pUser, mPrevState)
+	{
+		updateIMStatus();
+	}
+
+	function updateIMStatus()
+	{
+		var allowList = Messenger.GetList(MLIST_ALLOW);
+		var count = allowList.Count;
+		var newOnlineCount = 0;
+
+		for (var i = 0; i < count; i++) {
+			if (allowList.Item(i).State == MSTATE_ONLINE) {
+				newOnlineCount++;
+			}
+		}
+
+		if ( waitingCount == 0 )
+		{
+			if (newOnlineCount != onlineCount) {
+				onlineCount = newOnlineCount;
+				SetNumericElement("contactCount", onlineCount);
+				if( document.all.onlineIcon ) document.all.onlineIcon.style.display = "none";
+				if(document.all.imStatus)
+					document.all.imStatus.style.display = onlineCount > 0 ? "inline" : "none";
+				if(document.all.imcontactLabel)	
+					document.all.imcontactLabel.innerText = onlineCount == 1 ? "Contact online" : "Contacts online";
+			}
+		}
+		else
+		{
+			SetNumericElement("contactCount", waitingCount );
+			if( document.all.onlineIcon ) document.all.onlineIcon.style.display = "inline";
+			if(document.all.imStatus) document.all.imStatus.style.display = "inline";
+			if(document.all.imcontactLabel) document.all.imcontactLabel.innerText = "Waiting for reply";
+		}
+	}
+
+	function UpdateWaitingCount( cnt )
+	{
+		waitingCount = cnt;
+		onlineCount = -1;
+		setTimeout( "updateIMStatus()" , 500 );
+	}
+
+	function OnListAddResult(hr, mList, pUser)
+	{
+		if (mList == MLIST_ALLOW) {
+			OnUserStateChanged(pUser, 0);
+		}
+	}
+
+			
+	function OnDownloadBegin(name, fileName, domain)
+	{
+		if (name == "main") {
+			document.ShowLoadIcon();
+		}
+	}
+	
+	function OnDownloadComplete(name)
+	{
+		if (name == "main") {
+			document.HideLoadIcon();
+		}
+	}
+	
+	function OnSecurityIconChange(panelName, secureLevel)
+	{
+		// NOTE: secureLevel of 1 means mixed.  We MAY want to show something different in that case
+		if (panelName == "main" && document.all.lockIcon)
+			document.all.lockIcon.style.display = (secureLevel >= 2) ? "inline-block" : "none";
+	}
+
+	function OnCapsLockChange(isOn)
+	{
+		if(document.all.capsLockIcon)
+			document.all.capsLockIcon.style.display = isOn ? "inline-block" : "none";
+	}
+
+	function OnAfterFirstShow(panelName)
+	{
+		if (panelName == "statusbar")
+			TVShell.PrintManager.SearchPrinters();
+	}
+
+	function OnUserModified(dispID)
+	{
+		if (TVShell.UserManager.CurrentUser.SmallIcon != icon.src)
+			icon.src = TVShell.UserManager.CurrentUser.SmallIcon;
+	}
+
+	function UpdateMemAvail()
+	{
+		if (TotalMemBase == 0) {
+			TotalMemBase = SysInfo.AvailPhysicalMemory;
+			TVShell.Message("StatusPanel: using " + TotalMemBase + " bytes for the base memory");
+		} else {
+			var amtUsed;
+			var amtAvail = SysInfo.AvailPhysicalMemory;
+			if (TotalMemBase <= amtAvail)
+				amtUsed = 0;
+			else
+				amtUsed = TotalMemBase - amtAvail;
+
+			document.all["memUsage"].percentComplete = Math.round(amtUsed/TotalMemBase*100);
+		}
+
+		MemUpdateID = setTimeout("UpdateMemAvail()", MemUpdateInterval);
+	}
+
+	
+	function UpdateTCPStatistics()
+	{
+		SetNumericElement("TCPSegmentsReceived", TVShell.ConnectionManager.NetworkStatistics.TCPInSegs);
+		SetNumericElement("TCPSegmentErrors", TVShell.ConnectionManager.NetworkStatistics.TCPInErrors);
+
+		TCPUpdateID = setTimeout("UpdateTCPStatistics()", TCPUpdateInterval);
+	}
+
+	
+	function UpdateUDPStatistics()
+	{
+		SetNumericElement("UDPInDatagrams", TVShell.ConnectionManager.NetworkStatistics.UDPInDatagrams);
+		SetNumericElement("UDPInErrors", TVShell.ConnectionManager.NetworkStatistics.UDPInErrors);
+
+		UDPUpdateID = setTimeout("UpdateUDPStatistics()", UDPUpdateInterval);
+	}
+
+	
+	function UpdateIPStatistics()
+	{
+		SetNumericElement("IPInReceives", TVShell.ConnectionManager.NetworkStatistics.IPInReceives);
+		SetNumericElement("IPInHdrErrors", TVShell.ConnectionManager.NetworkStatistics.IPInHdrErrors);
+
+		IPUpdateID = setTimeout("UpdateIPStatistics()", IPUpdateInterval);
+	}
+
+	
+	function OnLoad()
+	{
+		if (TVShell.UserManager.CurrentUser.ServiceList("mail::writemail") != null) {
+			Sink.AttachEvent(Messenger, "OnUnreadEmailChanged", OnUnreadEmailChanged);
+		}
+		Sink.AttachEvent(Messenger, "OnUserStateChanged", OnUserStateChanged);
+		Sink.AttachEvent(Messenger, "OnListAddResult", OnListAddResult);
+		Sink.AttachEvent(TVShell.PanelManager, "OnSecurityIconChange", OnSecurityIconChange);
+		Sink.AttachEvent(TVShell.PanelManager, "OnAfterFirstShow", OnAfterFirstShow);
+		Sink.AttachEvent(TVShell.PanelManager, "OnDownloadBegin", OnDownloadBegin);
+		Sink.AttachEvent(TVShell.PanelManager, "OnDownloadComplete", OnDownloadComplete);
+		Sink.AttachEvent(TVShell, "OnCapsLockChange", OnCapsLockChange);
+		Sink.AttachEvent(TVShell.UserManager.CurrentUser, "OnUserModified", OnUserModified);
+
+		if (TVShell.UserManager.CurrentUser.ServiceList.Item("messenger::root") != null) {
+			if (Messenger.LocalState != MSTATE_UNKNOWN && Messenger.LocalState != MSTATE_OFFLINE) { 
+				if (TVShell.UserManager.CurrentUser.ServiceList("mail::writemail") != null) {
+					OnUnreadEmailChanged(MFOLDER_INBOX, Messenger.GetUnreadEmail(MFOLDER_INBOX));
+				}
+				OnUserStateChanged(null, 0);
+			}
+		}
+
+		OnCapsLockChange(TVShell.CapsLock);
+
+		// Initial delay of 5 seconds to get a better base memory value
+		if (MemUpdateID != 0) {
+			MemUpdateID = setTimeout("UpdateMemAvail()", 5000);
+		}
+
+		if (TCPUpdateID != 0) {
+			document.all.TCPNetworkStatistics.style.display = "inline";
+			TCPUpdateID = setTimeout("UpdateTCPStatistics()", TCPUpdateInterval);
+		}
+
+		if (UDPUpdateID != 0) {
+			document.all.UDPNetworkStatistics.style.display = "inline";
+			UDPUpdateID = setTimeout("UpdateUDPStatistics()", UDPUpdateInterval);
+		}
+
+		if (IPUpdateID != 0) {
+			document.all.IPNetworkStatistics.style.display = "inline";
+			IPUpdateID = setTimeout("UpdateIPStatistics()", IPPUpdateInterval);
+		}
+	}
+</script> 
+
+<title></title>
+</head>
+
+<BODY text=#E6E6E6 bottomMargin=0 leftMargin=0 topMargin=0 rightMargin=0 bgcolor=black onload="OnLoad();">
+<DIV style="position:absolute; top: 0px; left: 0px; width: 100%; height: 36px">
+	<table cellpadding="0" cellspacing="0" width="100%" height="100%">
+	  <tr>
+	    <td width="560">
+	    	<img src="images/StatusBarBG.jpg" width="560" height="36"></td>
+	    <td style="background: url(images/StatusBarStretch.jpg) repeat-x;width:100%;text-align:right">
+	    </td>
+	  </tr>
+	</table>
+</DIV>
+
+<DIV style="position:absolute; top: 0px; left: 8px; width: 30px; height: 36px;">
+	<script>
+		if (TVShell.UserManager.CurrentUser)
+		{
+			var imgSource = TVShell.UserManager.CurrentUser.SmallIcon;
+			document.write("<img id=icon src='" + imgSource + "' style='width:30px; height:30px;margin-top:5px;margin-bottom:1px;'>");
+		}
+	</script>
+</DIV>
+<DIV style="position:absolute; top: 6px; left: 38px; height: 36px;">
+	<span id="mailStatus" style="display:none;"
+		><span id="emailCount" class="bigNumber">?</span
+		><span class="numberLabel">Unread mail</span
+	></span
+	><span id="imStatus" style="display:none;">
+		<span id=onlineIcon style="behavior: url(#default#alphaImageLoader); margin-left:8px;	margin-right: 0px;	width:20px; height: 25px; vertical-align: middle; src:images/AlertsIconNewMessage.png; display:none;"></span>
+		<span id="contactCount" class="bigNumber">?</span>
+		<span class="numberLabel" id=imcontactLabel>Contacts online</span>
+	</span
+	><span id="TCPNetworkStatistics" style="display:none;"
+		><span id="TCPSegmentsReceived" class="bigNumber">?</span
+		><span class="numberLabel" id=contactLabel>TCP Segs</span
+		><span id="TCPSegmentErrors" class="bigNumber">?</span
+		><span class="numberLabel" id=contactLabel>TCP Errs</span
+	></span
+	><span id="UDPNetworkStatistics" style="display:none;"
+		><span id="UDPInDatagrams" class="bigNumber">?</span
+		><span class="numberLabel" id=contactLabel>UDP In</span
+		><span id="UDPInErrors" class="bigNumber">?</span
+		><span class="numberLabel" id=contactLabel>UDP Errs</span
+	></span
+	><span id="IPNetworkStatistics" style="display:none;"
+		><span id="IPInReceives" class="bigNumber">?</span
+		><span class="numberLabel" id=contactLabel>IP In</span
+		><span id="IPInHdrErrors" class="bigNumber">?</span
+		><span class="numberLabel" id=contactLabel>IP Errs</span
+	></span>
+</DIV>
+<DIV style="position:absolute; top: 0px; right: 0px; height: 36px; width:196px;text-align:right;">
+	<img id=loadIcon src="images/Icon_LoadPageStatusBar.gif" class=icon
+	><span id=lockIcon class=icon style="behavior: url(#default#alphaImageLoader); src:images/Icon_SecurePageStatusBar.png;"></span
+	><span id=capsLockIcon class=icon style="behavior: url(#default#alphaImageLoader); src:images/Icon_CapsLockStatusBar.png;"></span
+	><script>
+		if (MemUpdateID != 0) {
+			document.write("<span style='vertical-align:middle; height:36px; width:112px;'><msntv:progressbar id='memUsage' style='margin-top:13px;'/></span>");
+		} else {
+			document.write("<span style='vertical-align:middle; height:36px; width:112px; behavior:url(#default#alphaImageLoader); src:images/Logo_MSNTVStatusBar.png;'></span>");
+		}
+	</script>
+</DIV>
+</body>
+
+</html>

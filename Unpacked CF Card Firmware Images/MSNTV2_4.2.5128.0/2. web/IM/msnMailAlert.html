@@ -1,0 +1,75 @@
+<HTML xmlns:msntv>
+<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../HTC/SettingsHeading.htc">
+
+<head>
+<title>Mail Alert Setting</title>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/TVShell.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/SettingsTemplate.js"></SCRIPT>
+
+<LINK REL=StyleSheet TYPE="text/css" HREF="../CSS/Settings.css">
+<script language=javascript>
+var MsgrObj = TVShell.UserManager.CurrentUser.Messenger;
+var CurrentUser = TVShell.UserManager.CurrentUser;
+
+	MALERT_BUDDYREQUEST			= 0x00000001;
+	MALERT_INVITATION			= 0x00000002;
+	MALERT_BUDDYONLINE			= 0x00000004;
+	MALERT_NEWMESSAGE			= 0x00000008;
+
+
+function SetAlertEvent()
+{
+	if(newMessageYes.checked) {
+		MsgrObj.AlertLevel(MALERT_NEWMESSAGE)=true;
+		CurrentUser.FeatureSettings = CurrentUser.FeatureSettings | MALERT_NEWMESSAGE;
+	}
+	else {
+		MsgrObj.AlertLevel(MALERT_NEWMESSAGE)=false;
+		CurrentUser.FeatureSettings = CurrentUser.FeatureSettings & (~(MALERT_NEWMESSAGE));
+	}
+	TVShell.UserManager.Save();
+	TVShell.DeviceControl.PlaySound("Task_Complete");
+}
+function setCheckBox()
+{
+	if ((CurrentUser.FeatureSettings & MALERT_NEWMESSAGE) > 0)
+		newMessageYes.checked = true;
+	else 
+		newMessageNo.checked = true;
+}
+
+</script>
+</head>
+<body>
+<SCRIPT>OpenSettingsTable( "Mail Settings" , "Mail Alerts" , "" );</SCRIPT>
+
+	<DIV id=sideBar>
+		<msntv:CustomButton href="javascript:history.go(-1)" onClick="SetAlertEvent()" class=sideBarButton id=Save label="Save Changes" />
+		<msntv:CustomButton href="javascript:history.go(-1)" class=sideBarButton id="default" label="Cancel" />
+		<script>document.all("default").focus();</script>
+	</DIV>
+	
+	<DIV id=scrollArea>
+		<DIV class=description>
+			<P>To see an alert at the bottom of your screen each time you receive a new e-mail message, choose <EM>Show me e-mail alerts</EM>.
+			<P>
+			
+			<table cellspacing=0 cellpadding=0 border=0>	
+				<tr><td><input id="newMessageYes" type=radio name=NewMessage></td><td width=8></td>
+					<td>Show me e-mail alerts</td></tr>
+				<tr><td cols=3 height=8></td></tr>
+				<tr><td><input id="newMessageNo"  type=radio name=NewMessage></td><td width=8></td>
+					<td>Don't show me e-mail alerts</td></tr>
+  			</table>
+			<P>
+			
+ 		</DIV>
+	</DIV>
+<SCRIPT>CloseSettingsTable();</SCRIPT>
+	
+<script>
+	setCheckBox();
+</script>
+</body>
+</html>

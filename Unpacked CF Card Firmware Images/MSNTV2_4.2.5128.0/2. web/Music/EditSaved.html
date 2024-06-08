@@ -1,0 +1,236 @@
+<html xmlns:msntv>
+<?import namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?import namespace="msntv" implementation="../HTC/DMRHeading.htc">
+<head>
+	<title>Music Edit Saved</title>
+	<link rel=StyleSheet type="text/css" href="../css/Base.css">	
+	<link rel=StyleSheet type="text/css" href="../css/Music.css">
+
+	<script language="Javascript" src="../Javascript/TVShell.js"></script>
+	<script language="javascript" src="../Javascript/ServiceList.js"></script>
+	<script language="javascript" src="../Javascript/VKCodes.js"></script>
+	<script language="Javascript" src="../Javascript/Parameters.js"></script>
+	<script language="javascript" src="../Javascript/DMRCommon.js"></script>
+	<script language="javascript" src="../Javascript/DMRNavigate.js"></script>
+	<script language="Javascript" src="../Javascript/ContentPaneHelp.js"></script>
+	
+	<script>
+		var Sink = new ActiveXObject("MSNTV.MultipleEventSink");
+		var saveDMRItemArray = null;
+		
+		function IsShuffleEnabled()
+		{
+			return shuffle.checked;
+		}
+		
+		function OnShufflePropertyChange()
+		{
+			if ( window.event.propertyName == "checked" ) {
+				if ( DMRItemArray.length != 0 ) {
+					BuildArray(false);
+				}
+			}
+		}
+		
+		rnd.seed=0;
+		
+		function rnd() {
+			if (rnd.seed == 0 ) {
+				rnd.date = new Date();
+				rnd.seed = rnd.date.getTime();		  
+			}
+			rnd.seed = ( (9301.0 * rnd.seed ) + 49297.0 ) % 233280.0;
+			return rnd.seed / 233280.0;
+		}
+
+		function rand(maxv) {
+			return (Math.ceil( rnd() * maxv ) - 1);
+		}
+		
+		function DisorderList(array1)
+		{
+			var numItems = array1.length;
+			var numSwaps = 0;				
+			while ( numSwaps < numItems*2 ) {
+				var a = rand(numItems);
+				var b = rand(numItems);
+				if ( a != b ) {		
+					var tmp = array1[a];
+					array1[a] = array1[b];
+					array1[b] = tmp;
+					numSwaps += 1;
+				}
+			}
+		}
+				
+		function CopyArray(src,dst)
+		{
+			var i;
+			
+			for ( i=0; i < src.length; i++ ) {
+				dst[i] = src[i];	
+			}
+		}
+			
+		function BuildArray(checkAll)
+		{
+			var i;
+			var document = new ActiveXObject("Msxml2.DOMDocument");
+			
+					
+			if ( DMRItemArray == null ) {
+				DMRItemArray = new Array();
+				if (document.load(savedSelectionsUrl)) {
+					var nodes = document.selectNodes("//Entry");
+
+					TVShell.Message("BuildArray " + nodes.length + " nodes");
+					if (nodes && nodes.length > 0) {
+						var j = 0;
+						for (var i = 0; i < nodes.length; i++) {
+							var node = nodes.item(i);
+							var name = node.selectSingleNode(".//DisplayName").text;
+							var href = node.selectSingleNode(".//Ref").getAttribute("href");
+						
+							if (href) {
+								DMRItemArray[j] = new DMRItem(name, href, "", checkAll);
+								j++;
+							}
+						}
+					}
+				}
+			}
+			if ( IsShuffleEnabled() ) {
+				if ( saveDMRItemArray == null ) {
+					saveDMRItemArray = new Array();
+					CopyArray(DMRItemArray,saveDMRItemArray);
+				}
+				DisorderList(DMRItemArray);
+			} else {
+				if ( saveDMRItemArray != null ) {
+					delete DMRItemArray;
+					DMRItemArray = new Array();
+					CopyArray(saveDMRItemArray,DMRItemArray);
+					delete saveDMRItemArray;
+					saveDMRItemArray = null;
+				}
+			}
+			
+			
+			scrollFrame.document.body.innerHTML = "";
+
+			if (DMRItemArray.length > 0) {
+				selectAllRow.style.display = "block";
+				BuildItemList(scrollFrame.document.body, "Music Tracks", "./Images/MusicTrack.png");
+			}
+		}
+		
+
+
+		function Delete()
+		{
+			if (CheckSelection("Remove", "music track") &&
+				PanelManager.CustomMessageBox("Are you sure you want to remove the selected music tracks?",
+											  "", "Remove;Do Not Remove", 0, "", false, 0x30, 1) == 0) {
+
+				var document = new ActiveXObject("Msxml2.DOMDocument");
+
+				if (document.load(savedSelectionsUrl)) {
+					var tables = scrollFrame.document.all.itemListDiv.all.tags("table");
+					var nodes = document.selectNodes("//Entry");
+
+					if (nodes && nodes.length > 0 && nodes.length == tables.length) {
+						for (var i = 0; i < tables.length; i++) {
+							if (tables[i].all.check.checked) {
+								nodes[i].parentNode.removeChild(nodes[i]);
+							}
+						}
+					}
+					document.save(savedSelectionsUrl);
+				}
+				delete DMRItemArray;
+				DMRItemArray = null;
+
+				BuildArray(false);
+				if (DMRItemArray.length == 0) {
+					history.go("msntv:/Music/MusicHome.html");
+				}
+			}
+		}
+
+		// Mount all enabled shares. Music in this list could come from any of them.
+		for (var i = 0; i < HomeNetworkObj.Count; i++) {
+			var host = HomeNetworkObj.Item(i);
+			for (var j = 0; j < host.Count; j++) {
+				var service = host.Item(j);
+				if (service.Enabled) {
+					service.Mount();
+				}
+			}
+		}
+	</script>
+</head>
+
+<body style="behavior: url(msntv:/HTC/ScrollDelegator.htc);">
+	<table style="height:100%; width:100%;" cellpadding="0" cellspacing="0">
+		<tr>
+			<td style="height:57px;">
+				<msntv:DMRHeading id="Heading" mainTitle="Music" subTitle="My Selections" helpTopicURL="MSNTV_TRS_TOC_Music" />
+			</td>
+		<tr>
+			<td>
+				<table style="width:100%; height:100%;" cellspacing=0 cellpadding=0>
+					<tr>
+						<td class="content" style="width:73%; padding-top:9px; vertical-align:top;">
+							<table style="height:100%; width:100%; cellpadding="0" cellspacing="0">
+								<tr id="selectAllRow" style="height:30px; display:none;">
+									<td style="width:70%; padding-right:23px; text-align:right; font-size:16px;">
+										Shuffle <input type=checkbox id="shuffle" onpropertychange="OnShufflePropertyChange();" onkeydown="OnShufflePropertyChange();">
+									</td>
+									<td style="width:30%; padding-right:23px; text-align:right; font-size:16px;">
+										Select All <input type=checkbox checked=true id="selectAll" onpropertychange="OnSelectAllPropertyChange();" onkeydown="OnSelectAllKeydown();">
+									</td>
+								</tr>
+								<tr>
+									<td colspan="2">
+										<iframe id="scrollFrame" frameborder="no" allowtransparency="true"></iframe>
+									</td>
+								</tr>
+							</table>
+						</td>
+						<td class="sidebar" style="width:27%; padding:9px 0px 0px 6px;">
+							<table style="height:100%; width:100%; cellpadding="0" cellspacing="0">
+								<tr>
+									<td style="vertical-align:top;">
+										<msntv:CustomButton id="playselected" class="sidebarButton" label="Play" onClick="PlaySelected('music track');" />
+										<msntv:CustomButton id="delete" class="sidebarButton" label="Remove" onclick="Delete();"/>
+										<msntv:CustomButton id="done" class="sidebarButton" label="Done" onclick="history.go('msntv:/Music/MusicHome.html');"/>
+									
+									</td>
+								</tr>
+								<tr>
+									<td style="height:40px;">
+									</td>
+								</tr>
+							</table>
+						</td>
+					</tr>
+				</table>
+			</td>
+		</tr>
+	</table>
+
+	<div id="playerDiv" style="position:absolute; top:0px; left:0px; visibility:hidden;">
+	</div>
+</body>
+
+<script>
+	InitializeScrollFrame(scrollFrame);
+	BuildArray(true);
+	if (DMRItemArray.length <= 0) {
+		scrollFrame.document.body.innerHTML = "<div style='padding:15px;'>No music selections found</div>";	
+		selectAll.checked = false;
+	}
+	playselected.focus();
+</script>
+
+</html>

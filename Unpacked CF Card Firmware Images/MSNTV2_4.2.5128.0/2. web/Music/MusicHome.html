@@ -1,0 +1,137 @@
+<html xmlns:msntv>
+<?import namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?import namespace="msntv" implementation="../HTC/DMRHeading.htc">
+<head>
+	<title>Music Home</title>
+
+	<link rel=StyleSheet type="text/css" href="../css/Base.css">	
+	<link rel=StyleSheet type="text/css" href="../css/Music.css">
+	<style type="text/css">
+		#headerSubTitle
+		{
+			left: 155px;
+			width: 345px;
+		}
+	</style>
+
+	<script language="Javascript" src="../Javascript/TVShell.js"></script>
+	<script language="Javascript" src="../Javascript/parameters.js"></script>
+	<script language="Javascript" src="../Javascript/ProgressPanel.js"></script>
+	<script language="javascript" src="../Javascript/ServiceList.js"></script>
+	<script language="javascript" src="../Javascript/HomeNetworking.js"></script>
+	<script language="javascript" src="../Javascript/DMRCommon.js"></script>
+	<script language="javascript" src="../Javascript/DMRHome.js"></script>
+	<script language="Javascript" src="../Javascript/ContentPaneHelp.js"></script>
+	<script language="Javascript" src="../Javascript/ConnectionManager.js"></script>
+	<script>	
+		var Sink = new ActiveXObject("MSNTV.MultipleEventSink");
+		var linkNum = 0;
+		var SideBarStr = "<table cellpadding=0 cellspacing=0 width=100% align=center >\
+							<tr>\
+								<td height=40><span class=sectionTitle>Tip:</span></td>\
+							</tr>";
+							
+		SideBarStr+="<tr>\
+						<td style=\"padding-right:15px;\">\
+							To listen to more music, check out Radio.\
+						</td>\
+					 </tr>\
+					 <tr><td height=15px></td></tr>\
+					 <tr>\
+						<td>\
+							<UL class=links><LI><a onclick=\"ConfirmSignOn('home::radioplus', 'Music');\">Go to Radio</a></LI></ul>\
+						</td>\
+					</tr>";	
+			
+		SideBarStr+="</table>";
+		
+		function BuildScrollArea()
+		{
+			var ScrollAreaStr = "";
+
+			linkNum = 0;
+
+			//build USB Storage Devices	section	
+			ScrollAreaStr+="<span class=sectionTitle>My Selections</span>";
+
+			// Get saved music count.
+			var savedMusic = new ActiveXObject("Msxml2.DOMDocument");
+			var nodes = null;
+			if (savedMusic.load(savedSelectionsUrl)) {
+				var nodes = savedMusic.selectNodes("//Ref");
+			}
+			if (nodes && nodes.length > 0) {
+				var itemStr = nodes.length == 1 ? " track" : " tracks";
+				ScrollAreaStr += "<span style=\"display:block; padding-bottom:15px;\"><a id=\"link" + linkNum++ + "\" style=\"display:inline-block;\" href=\"EditSaved.html\">" + nodes.length + itemStr + "</a></span>";
+			}
+			else {
+				ScrollAreaStr += "<span style=\"display:block; padding-top:5px;\"><UL class=links><LI><a href='msntv:/Help/MSNTV_PROC_SINGLE_Music_MySelections_Offline_v11.htm'>Learn More</a></LI></ul></span>";
+			}
+
+			
+			//build USB Storage Devices	section	
+			ScrollAreaStr+="<span class=sectionTitle>Music on memory card</span>";
+			ScrollAreaStr += BuildUSBList("MSNTV_PROC_SINGLE_Music_MemoryCard_Offline_v11.htm");
+			
+			// build home network Storage Devices section
+			ScrollAreaStr += "<span class=sectionTitle>Music on home network</span>";
+			ScrollAreaStr += BuildHomeNetworkList("MSNTV_PROC_SINGLE_Music_HomeNet_Offline_v11.htm");
+
+			return ScrollAreaStr;
+		}
+		
+		function SetDefaultFocus()
+		{
+			if (document.all.link0) {
+				link0.focus();
+			} 
+			else {
+				var	anchors = scrollArea.all.tags("a")
+				if (anchors.length > 0) {
+					anchors[0].focus();
+				}
+			}
+		}
+
+		function OnLoad()
+		{
+			sideBar.innerHTML = SideBarStr;
+			scrollArea.innerHTML = BuildScrollArea();
+			SetDefaultFocus();
+		}
+
+		function OnDeviceAdd()
+		{
+			scrollArea.innerHTML = BuildScrollArea();
+			SetDefaultFocus();
+		}
+
+		function OnDeviceRemove()
+		{
+			scrollArea.innerHTML = BuildScrollArea();
+			SetDefaultFocus();
+		}
+
+		Sink.AttachEvent(StorageManager, "OnDeviceAdd", OnDeviceAdd);
+		Sink.AttachEvent(StorageManager, "OnDeviceRemove", OnDeviceRemove);
+
+		if (HomeNetworkObj) {
+			Sink.AttachEvent(HomeNetworkObj, "OnHostHandler", OnHostHandler);
+	        Sink.AttachEvent(HomeNetworkObj, "OnServiceHandler", OnServiceHandler);
+
+			SynchronizeShares();
+		}
+		
+	</script>
+</head>
+
+<body topmargin=0 leftmargin=0 rightmargin=0 bottommargin=0 onload="OnLoad();">
+		<msntv:DMRHeading mainTitle="Home Media" subTitle="Music" helpTopicURL="MSNTV_TRS_TOC_Music" />
+	
+		<DIV id=sideBar style="width:30%; padding-left:4px;">		
+		</DIV>
+		
+		<DIV id=scrollArea style="width:70%;" class=description>		
+		</DIV>
+</body>
+</html>

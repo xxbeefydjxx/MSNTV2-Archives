@@ -1,0 +1,81 @@
+<HTML xmlns:msntv>
+<TITLE>Call waiting sensitivity adjustment</TITLE> 
+<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../HTC/SettingsHeading.htc">
+<?import namespace="msntv" implementation="../HTC/DropDownList.htc">
+<SCRIPT LANGUAGE="Javascript" SRC="../Javascript/TVShell.js"></SCRIPT>
+<SCRIPT LANGUAGE="Javascript" SRC="../Javascript/ServiceList.js"></SCRIPT>
+<SCRIPT LANGUAGE="Javascript" SRC="../Javascript/ConnectionManager.js"></SCRIPT>
+<SCRIPT LANGUAGE="Javascript" SRC="../Javascript/SettingsTemplate.js"></SCRIPT>
+<LINK REL="StyleSheet" TYPE="text/css" HREF="../CSS/Settings.css">
+<STYLE> table.controlTable td { padding-top: 7px; }</STYLE>
+<SCRIPT>var ModemSettings = TVShell.ConnectionManager.ModemAdapter.Settings;</SCRIPT>
+<BODY onLoad="onLoadPage();">
+	
+	
+	
+	<SCRIPT>
+	
+	document.write("<FORM name=dialSettingsForm onsubmit='return false;'>");
+	
+	OpenSettingsTable( "Settings" , "Call waiting sensitivity" , "" );
+	
+	if ( ModemSettings.CallWaitingMode == CallWaitingNone ) {
+		document.write("<DIV id='ScrollArea'><p>This setting is only available if call waiting is enabled.</p><br></div>");
+		document.write("<DIV id=sideBar>");
+		document.write("<msntv:CustomButton href='javascript:history.go(-1)' class=buttonBarButton id=default label='Cancel' />");
+		document.write("</DIV>");
+	} else {
+		document.write("<DIV id=ScrollArea><DIV class=description><P>"
+		+ "If your phone line has call waiting, and you have it enabled so that "
+		+ "your " + ProductShortName +" can disconnect when you receive an incoming call, you can adjust how sensitive the detection of the call waiting signal is.</P>");
+					
+		document.write("<p>If your " + ProductShortName + " disconnects too often when no calls are present then change "
+		+ "this setting to less sensitive. If incoming calls sometimes are missed because the "
+		+ ProductShortName + " does not disconnect, then change this setting to more sensitive.</p></DIV>"); 
+
+		document.write( "<TABLE class=options>");
+		document.write( "<TR>	<TD><INPUT type='radio' name='sense' checked></TD><TD>Least Sensitive</TD></TR>" );
+		document.write( "<TR>	<TD><INPUT type='radio' name='sense' checked></TD><TD>Even Less Sensitive</TD></TR>" );
+		document.write( "<TR>	<TD><INPUT type='radio' name='sense' checked></TD><TD>Less Sensitive</TD></TR>" );
+		document.write( "<TR>	<TD><INPUT type='radio' name='sense' checked></TD><TD>Normal</TD></TR>" );
+		document.write( "<TR>	<TD><INPUT type='radio' name='sense' checked></TD><TD>More Sensitive</TD></TR>" );
+		document.write( "<TR>	<TD><INPUT type='radio' name='sense' checked></TD><TD>Most Sensitive</TD></TR>" );
+		document.write("</TABLE></DIV>");
+
+
+		document.write("<DIV id=sideBar>");
+		document.write("<msntv:CustomButton href='javascript:submitChanges()' class=buttonBarButton id=Done label='Save Changes' />");
+		document.write("<msntv:CustomButton href='javascript:history.go(-1)' class=buttonBarButton id=default label='Cancel' />");
+		document.all("Done").focus();
+		document.write("</DIV>");
+		
+	}
+	CloseSettingsTable();
+	
+	document.write("</FORM>");
+	
+	function onLoadPage() 
+	{
+		if (ModemSettings.CallWaitingMode != CallWaitingNone) {
+			document.dialSettingsForm.sense[ModemSettings.CallWaitingSensitivity].checked = true;
+		}
+	}
+
+	function submitChanges() 
+	{
+		if (ModemSettings.CallWaitingMode != CallWaitingNone) {
+			var lastCWSensitivity = ModemSettings.CallWaitingSensitivity;
+			for ( var i = 0 ; i < 6 ; i++ )
+			{
+				if ( document.dialSettingsForm.sense[i].checked ) ModemSettings.CallWaitingSensitivity = i;
+			}
+			if (lastCWSensitivity != ModemSettings.CallWaitingSensitivity ) {
+				ConnectionManagerSave();
+			}
+			history.go(-1);
+		}
+	}
+	</SCRIPT>
+</BODY>
+</HTML>

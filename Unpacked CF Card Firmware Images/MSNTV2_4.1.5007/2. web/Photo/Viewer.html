@@ -1,0 +1,915 @@
+<html xmlns:msntv>
+<?import namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?import namespace="msntv" implementation="../HTC/PhotoHeading.htc">
+<?import namespace="msntv" implementation="msntv:/HTC/DropDownList.htc">
+<head>
+	<title>Photo Viewer</title>
+	<link rel=StyleSheet type="text/css" href="../css/Photo.css">
+	<link rel=StyleSheet type="text/css" href="../css/Base.css">
+	
+	<STYLE>		
+		#scrollArea
+		{
+			top: 56px;
+			padding-left: 0px;
+			padding-right: 0px;
+			overflow-y: hidden;
+			behavior: url(#default#gradient);
+		}	
+		
+		#sideBar
+		{
+			padding: 0px 2px 0px 0px;
+		}			
+		
+	</STYLE>
+	
+	<script LANGUAGE=Javascript SRC="../Javascript/TVShell.js"></script>
+	<script language="Javascript" src="../Javascript/ContentPaneHelp.js"></script>
+	<script LANGUAGE=Javascript SRC="../Javascript/Panels.js"></script>
+	<script src="msntv:/Javascript/Parameters.js"></script>
+	<script src="msntv:/Javascript/print.js"></script>
+	<script src="msntv:/Javascript/ProgressPanel.js"></script>
+	<script src="msntv:/Javascript/EventLog.js"></script>
+	<script src="msntv:/Javascript/ServiceList.js"></script>
+	<script language="Javascript" src="msntv:/Javascript/ConnectionManager.js"></script>
+	<script src="Photos.js"></script>
+	<script src="PhotosNavigate.js"></script>
+	
+	<script>
+		SetProgressStopFunction(null);
+		SetProgressText(PROGRESS_PLEASE_WAIT + "Reading Folder ...");
+		SetProgressPercent(20);
+		ShowProgressPanel();
+		
+		var kMaxResHeight	   = 768;
+		var kMaxResWidth	   = 1024;
+		var kTempPrintPhotoName = "\\temp\\photo\\TempPrintPhoto.jpg";
+		
+		var PrintManager     = TVShell.PrintManager;
+			
+		var PhotoParametersFromFile;	
+		if(fromMail)
+			PhotoParametersFromFile = FindParametersFromFile("\\temp\\photo\\TempPhotoControlData");
+		
+		var XMLDoc;
+		var webReadyNodes;
+		var thumbnailNodes;	
+		var backCount = -1;
+
+		var printIndex = -1;
+		var rotateIndex = -1;
+		var photosStr = "";
+		
+		function InitializeParamsAndBuildArrays()
+		{
+			if (PhotoParametersFromFile)
+			{
+				XMLFileURL = PhotoParametersFromFile.XMLFileURL;
+				viewerStartIndex = PhotoParametersFromFile.startIndex;
+				backCount = PhotoParametersFromFile.backCount;
+			}
+		
+			if(XMLFileURL)
+			{
+				XMLDoc = new ActiveXObject("Msxml2.DOMDocument");
+				XMLDoc.async = false;
+							
+				if(XMLDoc.load(XMLFileURL))
+				{
+					thumbnailNodes = XMLDoc.selectNodes("//Thumbnail//URL");
+					webReadyNodes = XMLDoc.selectNodes("//WebReady//URL");
+					if (webReadyNodes)
+					{
+						for (j = 0; j < webReadyNodes.length; j++) 
+						{
+							var node = webReadyNodes.item(j);	
+							if (node)
+							{	
+								var URLVal = node.text;
+								if(URLVal)
+								{
+									allImageFileNames+=URLVal;
+									allImageFileNames+="&msntvIndex=";
+									allImageFileNames+=j;
+									allImageFileNames+='\n';
+
+									PhotosItemArray[j] = new PhotosItem("", URLVal, "image/jpeg", "");
+								}
+							}
+						}
+					}
+				}	
+			}
+			else
+			{
+				PhotoManager.ClearThumbnailRequestQueue();
+				PhotoManager.ClearImageResizeRequestQueue();
+			
+				if (StorageManager && StorageDeviceVN)
+				{	
+					StorageDevice = StorageManager.Item(StorageDeviceVN);	
+					if(	StorageDevice)
+					{	
+						BuildArrays("image/jpeg");
+				
+						if(PhotosItemArray && PhotosItemArray.length>0)
+						{
+							GenerateGroups();
+						}
+					}	
+				}
+			}
+
+			document.GetThumbnailNodes    = function () {return thumbnailNodes;};
+			document.GetAllImageFileNames = function () {return allImageFileNames;};
+
+			if (allImageFileNames)
+			{
+				FileNameArray = allImageFileNames.split('\n');
+				nPhotos = FileNameArray.length - 1;
+			}
+	
+			photosStr = (nPhotos==1) ? "Photo" : "Photos";
+		}
+		
+		function GetStorageInfo()
+		{
+		    var _BOSPhotoCount=0;
+			var StorageDevice = TVShell.StorageManager.Item(userDataVolumeName);
+			if (StorageDevice) 
+			{
+					
+				var xmlStr = StorageDevice.EnumerateItems(PhotoStorePath, "image/jpeg");
+				if(xmlStr)
+				{
+
+					var xmlDoc = new ActiveXObject("Msxml2.DOMDocument");
+					xmlDoc.async = false;
+
+					if(xmlDoc.loadXML(xmlStr))
+					{
+    
+						var nodes = xmlDoc.selectNodes("//a:response[a:propstat/a:prop/a:iscollection = 0]");
+    
+						if (nodes)
+							_BOSPhotoCount = nodes.length;
+					}
+				}
+
+				delete xmlDoc;
+			 }
+			 return _BOSPhotoCount;
+		}
+
+		function CreateHiddenPanelForPrint()
+		{
+
+         	var imageprinthost = new Panel("imageprinthost", "msntv:/Photo/ImagePrintPanel.html",
+							  SYSTEM_PANEL_TYPE, STATIC_PANEL_STYLE,100,0,false);
+	        imageprinthost.start = new Rectangle(0, 0, screen.availWidth, screen.availHeight);
+            return AddPanel(PanelManager, imageprinthost);
+		}
+
+		var tempFileName;
+
+		function PrintOne(fileName)
+		{			
+			TVShell.Message("in PrintOne");	
+			if(!fileName || fileName=="")
+				return;		
+            PanelManager.Remove("imageprinthost");
+			CreateHiddenPanelForPrint();
+			tempFileName=fileName;
+            setTimeout("StartPrintPhotoOne()",500);
+ 		}
+        
+		function StartPrintPhotoOne()		
+		{
+		    var fileName=tempFileName;
+			PrintManager.AllPages=true;
+			PrintManager.PopulateRegistry();
+
+			var xRes = GetXResolution();
+			var yRes = GetYResolution();
+			
+			var originalImageWidth  = ThumbnailManager.GetImageWidth(fileName);
+			var originalImageHeight = ThumbnailManager.GetImageHeight(fileName);
+		
+			if(kMaxResHeight > 0 && kMaxResWidth > 0 && 
+			   ((originalImageHeight > kMaxResHeight) || (originalImageWidth > kMaxResWidth)))
+			{
+			   if (ThumbnailManager.ResizeImage(fileName, kTempPrintPhotoName, kMaxResHeight, kMaxResWidth, true))
+				{
+					fileName = kTempPrintPhotoName;
+					originalImageWidth  = ThumbnailManager.GetImageWidth(fileName);
+					originalImageHeight = ThumbnailManager.GetImageHeight(fileName);
+				}
+				else
+				{
+					TVShell.Message("picker : could not resize to fit max res");
+					return;
+				}
+			}
+			
+			if(originalImageWidth >= originalImageHeight)
+				PrintManager.Orientation = "Landscape";
+			else
+				PrintManager.Orientation = "Portrait"; 
+			
+			PrintManager.PopulateRegistry();
+
+			if(fileName && (fileName.indexOf("file://")==-1 && fileName.indexOf("http://")==-1))
+				fileName = "file://" + fileName;
+			TVShell.Message("print file " + fileName);	
+		    var printsrcObj=PanelManager.Item("imageprinthost").Document.all.printsrc;
+			printsrcObj.src=fileName;
+			
+
+			if((xRes <0) || yRes < 0 || ((originalImageHeight <= yRes) && (originalImageWidth <= xRes)))
+			{
+				// case 1: original dimensions are smaller than printarea, no scaling necessary
+			}
+			else if (originalImageHeight * xRes >= originalImageWidth * yRes)
+			{
+				// case 2: the height is the limiting guy
+				printsrcObj.height= yRes ;
+			}
+			else
+			{
+				// case 3: the width is the limiting guy
+				printsrcObj.width=xRes ;
+			}
+		    
+			PanelManager.Item("imageprinthost").Print("file://\\web\\PrintTemplates\\templateNoPreview.htm","", false, false);
+
+		}
+		
+		// hang the printphotos function from the document
+		document.PrintPhotos = function () {
+			
+			if(CheckedItemCount == 0)
+				return;
+				
+			printIndex = 0;
+			printStatus = "printing";
+			if(CheckedFileArray[printIndex])
+				PrintOne(CheckedFileArray[printIndex]);
+		};
+		
+		document.ClickPrintButton = function () {
+			PickerAction('Print');
+		};
+
+		document.PhotoSelected = function () {
+
+            if(CheckedItemCount>0)
+			  return true;
+			else
+			  return false;
+		}
+
+		document.UpdatePrintProgressText= function () {
+			
+			var statusStr="Printing photo " + (printIndex+1) + " of " + CheckedItemCount+". Please wait...";
+			return statusStr;
+		}
+		
+
+		document.UpdatePrintProgressPercentage= function (type) {
+			
+			var percentage=0;
+			if(type==0)
+			    percentage=parseInt(printIndex*100/CheckedItemCount);
+			else if(type==1)
+			    percentage=parseInt((printIndex*100+50)/CheckedItemCount);
+			else if(type==3 || type==2)
+			    percentage=parseInt((printIndex+1)*100/CheckedItemCount);
+			return percentage;
+		}
+
+		function DeletePhotos()
+		{
+			var msg = "<p>Select <b>Delete</b> to discard the";
+			msg+=(CheckedItemCount==1)? " photo" : " photos";
+			msg+=" you selected. Please be aware that";
+			msg+=(CheckedItemCount==1)? " this photo" : " these photos";
+			msg+=" will be permanently discarded." ;
+
+			var failures = new Array();
+
+			var retVal = PanelManager.CustomMessageBox(msg,"Delete Photos Confirmation", "Delete;Cancel", 1,"");						
+			if(retVal==0)
+			{		
+				var nPhotosToDelete = 0;
+				for (i=0; i<nPhotos; i++)
+				{
+					if(PhotosItemArray[i].checked) 
+					{	
+						nPhotosToDelete++;
+						if ( Utilities.RemoveFile(FileNameArray[i]) == false )
+							failures.push( FileNameArray[i] );
+					}
+				}
+				if ( failures.length > 0 )
+				{
+					var errPhotoStr = ( nPhotos == 1 || failures.length == 1? "photo" : failures.length == nPhotosToDelete ? "all photos" : "" + failures.length + " photos");
+					var titlePhotoStr;
+					if ( nPhotos == 1 )
+					{
+						errPhotoStr = "selected photo.";
+						titlePhotoStr = "Photo";
+					}
+					else if ( failures.length == 1 )
+					{
+						errPhotoStr = "1 of the " + nPhotosToDelete + " photos that were selected.";
+						titlePhotoStr = "Photo";
+					}
+					else if ( failures.length == nPhotosToDelete )
+					{
+						errPhotoStr = "any of the " + nPhotosToDelete + " photos that were selected.";
+						titlePhotoStr = "Photos";
+					}
+					else
+					{
+						errPhotoStr = "" + failures.length + " of the " + nPhotosToDelete + " photos that were selected.";
+						titlePhotoStr = "Photos";
+					}
+					
+					var retVal = PanelManager.CustomMessageBox("Unable to delete " + errPhotoStr, "Delete  " + titlePhotoStr, "Continue", 1,"");
+				}
+
+				mainPanel.document.location.reload(true);
+
+			}
+		}
+				
+        function SavePhotos()
+		{
+			if(CheckedItemNames!="")
+			{           
+				var tempFileName = "\\temp\\photo\\TempSelectedPhotoList.txt";
+				Utilities.CreateTextFile(tempFileName, CheckedItemNames);
+				var destURL = "msntv:/Photo/PhotoOrganizer.html"+"?state=save&context=photo";
+				if(XMLFileURL)
+                    destURL+="&XMLFileURL=" + XMLFileURL;
+			    mainPanel.GotoURL(destURL);
+			}
+		}
+		
+		function PickerAction(pickerAction, noSelectionAlert)
+		{
+			TVShell.Message("here " + pickerAction + " " + noSelectionAlert);
+			
+			if(nPhotos <= 0)
+			{
+				 ShowNoPhotoAlert();
+				 return;
+			}
+			
+			CheckedItemNames="";
+			var itemCount = PhotosItemArray.length;
+			for (i=0; i<itemCount; i++)
+			{
+				if(PhotosItemArray[i].checked) 
+				{
+					CheckedItemNames+=FileNameArray[i];
+					CheckedItemNames+='\n';
+				}
+			}
+			
+			if(CheckedItemNames =="" )
+			{
+				if(!noSelectionAlert)
+				{
+					var str= "Please choose";
+					str+=(nPhotos==1)? " the photo" : " one or more photos";
+					str+=" before selecting ";		
+					if(pickerAction=="RotateLeft" || pickerAction=="RotateRight")
+						str+="Rotate";
+					else 
+						str+=pickerAction + " Photos";			
+					alert(str);
+					return;
+				}
+			} else
+			{
+				CheckedFileArray = CheckedItemNames.split('\n');
+			}
+			
+			if(pickerAction == "SlideShow")
+				SlideShow();
+			else if(pickerAction == "GotoSlideShow")
+				GotoSlideShow();
+			else if (pickerAction == "Send")
+				SendPhotos('webready','send');
+			else if (pickerAction == "Print")
+				GotoPrint();
+			else if (pickerAction == "Save")
+			{   
+			    
+			    if(CheckedFileArray.length-1+GetStorageInfo() >MAX_PHOTOS_ON_LOCAL_STORAGE)
+				{
+				    var msg="You are attempting to add "+(CheckedFileArray.length-1)+((CheckedFileArray.length-1>1)?" photos":" photo")+" to an album.  This exceeds the total photo storage capacity. Please select fewer photos or discard some photos first.";
+		            PanelManager.CustomMessageBox(msg,"", "Cancel", 0,"",true);
+				}
+				else
+				   SavePhotos();	
+			}	
+			else if (pickerAction == "Delete")
+				DeletePhotos();
+			else if(pickerAction == "RotateLeft")
+				RotateLeft();
+			else if(pickerAction == "RotateRight")
+				RotateRight();
+		}
+		
+		function OrganizePhotos()
+		{
+	
+			PanelManager.Item("main").GotoURL("msntv:/Photo/PhotoOrganizer.html"+"?state=organize&context=photo");
+	    }
+
+		function OnLoad()
+		{		
+			if(CheckedItemCount==nPhotos && nPhotos>0)
+			{
+				document.all.SelectAllID.checked = true;
+			}
+			
+			UpdateSelectedCountStr();
+		}
+		
+		function OnUnLoad()
+		{
+			PhotoManager.ClearThumbnailRequestQueue();
+		}
+		
+		function OnDeviceRemove(storageDevice)
+		{
+			if (!storageDevice)
+				return;
+
+			TVShell.Message("Viewer.html: Device removed: " + storageDevice.VolumeName);
+			
+			if(!XMLFileURL)
+			{
+				var photoPickerPanel = PanelManager.Item("PhotoPickerPanel");				
+				if(photoPickerPanel && photoPickerPanel.State == 0)
+					return;
+					
+				if (storageDevice.VolumeName == StorageDeviceVN) {
+					alert("The content you are viewing is no longer available. Your current activity cannot be completed. Choose OK to continue.");
+					history.go("msntv:/Photo/PhotoHome.html");
+				}
+			}		
+		}	
+		
+		function OnCancelTemplatePrint()
+		{
+			TVShell.Message("PhotoPicker: Print canceled!");
+			PanelManager.Remove("imageprinthost");
+			printIndex = -1;
+		}
+
+		function OnTemplatePrintCompleted()
+		{
+			TVShell.Message("PhotoPicker: Print completed!");
+			PanelManager.Remove("imageprinthost");
+			printIndex++;
+		}
+		
+		function OnPrintTemplateClosed()
+		{
+			TVShell.Message("PhotoPicker: Print closed! " + printIndex);
+			PanelManager.Remove("imageprinthost");
+			
+			if ((printIndex >= 0) && (printIndex <= CheckedItemCount) && CheckedFileArray[printIndex])
+				PrintOne(CheckedFileArray[printIndex]);
+			else
+			{
+				printIndex = -1;
+	  			HideProgressPanel();
+			}
+		}
+
+		function ShowNoPhotoAlert()
+		{
+			alert("No photos available.");		
+		}
+			
+		function SlideShow()
+		{	
+			var tempFileName = "\\temp\\photo\\AllImageList.txt";
+			if(CheckedItemNames == "")
+				Utilities.CreateTextFile(tempFileName, allImageFileNames);
+			else
+				Utilities.CreateTextFile(tempFileName, CheckedItemNames);
+			var tempURL = "SlideShow.html?tempAllFileList=" + tempFileName;
+			if(XMLFileURL)
+				tempURL+="&XMLFileURL=true";
+			tempURL+="&StorageDeviceVN=" + escape(StorageDeviceVN);
+			document.location = tempURL;
+		}
+		
+		function GotoSlideShow()
+		{	
+			var tempFileName = "\\temp\\photo\\AllImageList.txt";
+			if(CheckedItemNames == "")
+				Utilities.CreateTextFile(tempFileName, allImageFileNames);
+			else
+				Utilities.CreateTextFile(tempFileName, CheckedItemNames);
+			var tempURL = "SlideShow.html?startIndex=" + selectedPhotoIndex + "&tempAllFileList=" + tempFileName;
+			tempURL+="&initialState=paused"
+			if(XMLFileURL)
+				tempURL+="&XMLFileURL=true";
+			document.location = tempURL;
+		}
+		
+		function AddToRotatedImageList(srcURL)
+		{
+			var UID = srcURL;
+			if(XMLFileURL && PhotoManager.FingerPrint)
+			{
+				UID = PhotoManager.FingerPrint;
+				var indexPos  = srcURL.lastIndexOf("&msntvIndex=");
+				if(indexPos != -1)
+				{
+					UID+= srcURL.slice(indexPos);
+				}
+			}
+			PhotoManager.AddToRotatedImageList(UID);
+		}
+
+		var abortRotate = false;
+		function RotateOne(imgURL, angle)
+		{	
+			if(!imgURL || imgURL=="" || abortRotate)
+			{
+				rotateIndex = -1;
+				HideProgressPanel();
+				return;
+			}
+				
+			var srcURL = imgURL;
+			var dstURL = PhotoManager.GetRotatedImageURL(srcURL);	
+			if(IsInRotatedImageList(srcURL))
+			{			
+				srcURL = dstURL;
+			}
+				
+			if( ThumbnailManager.RotateImage(srcURL, dstURL, angle) )
+			{
+				AddToRotatedImageList(imgURL);
+					
+				if(location==1)
+				{
+					ThumbnailManager.CopyFileToURL(dstURL,imgURL);
+				}
+				
+				var imgThumbURL = PhotoManager.RequestThumbnail(dstURL, true, true);
+				
+				i = LookupIndex(imgURL);
+				if( i < nPhotos /*>*/ ) 
+				{
+					var imgThumbnailElement = document.all["imgThumbnail" + i];
+					if (imgThumbnailElement)
+						imgThumbnailElement.src = imgThumbURL;
+				}	
+			}
+
+			RotateNext( rotateIndex + 1, angle );
+		}
+
+		function RotateNext( i, angle )
+		{
+			rotateIndex = i;			
+				
+			if ( rotateIndex >= 0 
+				 && rotateIndex < CheckedItemCount 
+				 && CheckedFileArray[rotateIndex] 
+				 && abortRotate == false )
+			{
+				setTimeout("RotateOne('" + EscapeScriptString(CheckedFileArray[rotateIndex]) + "'," + angle + ")", 1);
+				
+				SetProgressPercent(Math.ceil( (100 * rotateIndex)/CheckedItemCount) );
+			}
+			else
+			{
+				rotateIndex = -1;
+				HideProgressPanel();
+			}
+		}
+		
+		function AbortRotate()
+		{
+			abortRotate = true;
+		}
+
+		function StartRotate( angle )
+		{
+			if(CheckedItemCount == 0)
+				return;
+				
+			abortRotate = false;
+			SetProgressStopFunction(AbortRotate);
+			var photos = (CheckedItemCount > 1 ? "Photos" : "Photo" );
+			SetProgressText(PROGRESS_PLEASE_WAIT + "Rotating "
+			                + CheckedItemCount + " "
+			                + photos + " ..." );
+			SetProgressPercent(0);
+			ShowProgressPanel();
+				
+			//Now go and start the rotate after we have a chance to
+			//display the progress panel
+			RotateNext( 0, angle )
+		}
+
+		function RotateLeft()
+		{
+			StartRotate( 270 );
+		}
+		
+		function RotateRight()
+		{
+			StartRotate( 90 );
+		}
+		
+		function Done()
+		{
+			if( XMLFileURL ) 
+			{
+				if(backCount<0)
+				{
+					TVShell.Message("going back " + backCount);
+					history.go(backCount);
+				}
+				else
+					history.go(-1);
+			}
+			else
+			{
+				history.go("msntv:/Photo/PhotoHome.html");
+			}
+		}
+		
+		function SendMail(fileInfo)
+		{
+			TVShell.Message("Viewer : sendmail");
+			if(fileInfo)
+			{
+				Utilities.CreateTextFile(selectedFileName, fileInfo);
+			}
+			
+			var writemailService   = CurrentUser.ServiceList("mail::writemail");
+			var writemailURL = "";
+
+			if(writemailService)
+			{
+	 			writemailURL  = writemailService.URL;
+				if(writemailURL)
+				{
+					writemailURL+="?action=photo";
+					document.location = writemailURL;
+				}
+			}
+			
+			return;
+		}
+		
+		// If we jumped directly to viewer, add home into back list
+		if (parameters.jump == "true") {
+			mainPanel.CreateTravelLogEntry("msntv:/Photo/PhotoHome.html", "Photo Home", true);
+		}
+
+		Sink.AttachEvent(TVShell.StorageManager,"OnDeviceRemove" , OnDeviceRemove);
+		Sink.AttachEvent(PrintManager, "OnCancelTemplatePrint", OnCancelTemplatePrint);
+        Sink.AttachEvent(PrintManager, "OnTemplatePrintCompleted", OnTemplatePrintCompleted);
+        Sink.AttachEvent(PrintManager, "OnPrintTemplateClosed", OnPrintTemplateClosed);
+					
+	</script>
+</head>
+
+<body topmargin=0 leftmargin=0 rightmargin=0 bottommargin=0 onload="OnLoad();" onunload="OnUnLoad();">
+
+	<msntv:PhotoHeading id="Heading" label="Viewer"/>
+	<script>
+		if (fromMail)
+			Heading.label="Email";
+		if(StorageDeviceVN)
+				WriteHeadingLabel(StorageDeviceVN, path);
+	</script>
+	
+	<div id="ScrollArea">	
+		<table width=100% height=100% cellspacing=0 cellpadding=0>
+			<tr id="topRow" style="display:none;">
+				<td height=40>
+					<span id="CountStr" style="color:#1d1d1d; font-size:16px; padding-left:10;"></span>,
+					<span id="SelectedCountStr" style="color:#1d1d1d; font-size:16px;"></span>
+				</td>	
+				<td id="selectAllTD" style="width:80px; text-align:right; padding-right:30px; font-size:16px;">Select All <input type=checkbox id=SelectAllID onclick='SelectAll();' NAME="SelectAllID"> </td>
+			</tr>
+			<tr>
+				<td height=100% colspan=2>
+					<div id=scrollListDiv tabIndex=-10001  style='overflow-y:auto; height:100%; xbackground-color:red; padding-right:23px; behavior: url(msntv:/HTC/ScrollingDIV.htc); xbackground-color:red; border-top:1px solid #888888;' preemptivescroll='false' xscrollincrement=87 xonscroll='OnScrollHandler();'>
+					<table id=warningTable width=100% cellspacing=0 cellpadding=0 style="display:none">
+						<tr width=100%>
+							<td valign=center>
+							<div style='position:relative;left:5px;margin:0 0 0 0;behavior:url(#default#alphaImageLoader);src:url(msntv:/Panels/Images/AlertsIconWarning.png);width:40px;height:40px;'></div>
+							</td>
+							<td id=warningCell style='font-size:16px;padding-top:5px'>
+							</td>
+						</tr>
+					</table>
+					</div>
+				</td>	
+			</tr>
+		</table>		
+	</div>
+	
+	<div id="sideBar">
+		
+		<table width=100% height=100% cellspacing=0 cellpadding=0 >
+			<tr>
+				<td height=5px>	
+				</td>	
+			</tr>
+
+			<tr id="JumpToRow" style="display:none;">
+				<td style="height:30px; font-size:16px; vertical-align:bottom; padding:0px 0px 2px 6px;">Jump to:</td>
+			</tr>
+
+			<tr id="DropdownRow" style="display:none;">
+				<td height=30>
+					<msntv:dropDownList id="dropDown" openDirection="down" size="0" style="width:134px; margin-left:6px;" onselect="OnDropDownSelect();" />
+				</td>
+			</tr>
+
+			<tr>
+				<td style="height:2px;">
+				</td>	
+			</tr>
+			<tr id="SizeRow" style="display:none;">
+				<td align=center height=30>
+					<table cellpadding=0 cellspacing=0 width=100%>
+						<tr>
+							<td align=left style='padding-left:1px;'><msntv:CustomButton id="ZoomOutButton" onclick='ZoomOut();' style="text-align:center; width:39px;padding:0px;  font-size:20px; "><b> - </b></msntv:CustomButton></td>
+							<td align=center style='font:16px;'> Size </td>
+							<td align=right style='padding-right:1px;'><msntv:CustomButton id="ZoomInButton" onclick='ZoomIn();'  style="text-align:center; width:39px;padding:0px; font-size:20px; "><b> + </b></msntv:CustomButton></td>
+						</tr>
+					</table>
+				</td>
+			</tr>
+
+			<tr id="SpacerRow1" style="display:none;">
+				<td style="height:6px;">
+				</td>	
+			</tr>
+			<tr id="SpacerRow2" style="display:none;">
+				<td style="height:2px;">
+					<div style="height:2px; line-height:2px; width:100%; margin:0px 6px; background-color:#888888;">&nbsp;</div>
+				</td>	
+			</tr>
+			<tr id="SpacerRow3" style="display:none;">
+				<td style="height:6px;">	
+				</td>	
+			</tr>
+
+			<tr id="SlideShowRow" style="display:none;">
+				<td align=center valign=top height=30 >
+					<msntv:CustomButton label="View" id="FirstButton" onClick="PickerAction('SlideShow',true);" />
+				</td>	
+			</tr>
+			
+			<tr id="EmailRow"  style="display:none;">
+				<td align=center valign=top height=30 >
+					<msntv:CustomButton label='Send Photos' id='EmailButton' onClick=PickerAction('Send') />
+				</td>
+			</tr>
+			
+			<tr id="PrintRow" style="display:none;">
+				<td align=center valign=top height=30>
+					<msntv:CustomButton label="Print Photos"  id="PrintButton" onClick=PickerAction('Print') />
+				</td>	
+			</tr>
+			
+			<tr id="SaveRow" style="display:none;">
+				<td align=center valign=top height=30 >
+					<msntv:CustomButton label='Save Photos' id='SaveButton' onClick=PickerAction('Save') />
+				</td>
+			</tr>
+					
+			<tr  id="DeleteRow" style="display:none;">
+				<td align=center valign=top height=30 >
+					<msntv:CustomButton label='Delete Photos' id='DeleteButton' onClick=PickerAction('Delete') />
+				</td>
+			</tr>
+			
+			<tr id="RotateRow" style="display:none;">
+				<td align=center valign=middle height=30>
+					<table cellpadding=0 cellspacing=0 width=100%>
+						<tr>
+							<td align=left height=30 style='padding-left:1px;'><msntv:CustomButton id="RotateLeftButton" onclick=PickerAction('RotateLeft')  style="text-align:center; width:39px;padding:0px;"><span style="behavior:url(#default#alphaImageLoader); src:Assets/Icon_PhotoRotateLeft.png; width:18px; height:18; "></span></msntv:CustomButton></td>
+							<td align=center height=30 style='font:16px;'>Rotate</td>
+							<td align=right height=30 style='padding-right:1px;'><msntv:CustomButton id="RotateRightButton" onclick=PickerAction('RotateRight')  style="text-align:center; width:39px;padding:0px;"><span style="behavior:url(#default#alphaImageLoader); src:Assets/Icon_PhotoRotateRight.png;width:18px; height:18; "></span></msntv:CustomButton></td>
+						</tr>
+					</table>
+				</td>
+			</tr>		
+		
+			<tr>
+				<td align=center valign=top height=30 >
+					<msntv:CustomButton label="Done" id="DoneButton" onclick="Done();"/>
+				</td>	
+			</tr>
+
+			<tr>
+				<td height=100%>
+				</td>
+			</tr>
+		</table>	
+	</div>
+	
+	<script>
+	function Init()
+	{
+		try
+		{
+			InitializeParamsAndBuildArrays();
+			SetProgressPercent(75);
+			setTimeout( Init1, 10);
+		}
+		catch(ex)
+		{
+			setTimeout( InitDone, 10);
+		}
+	}
+
+	function Init1()
+	{
+		try
+		{
+			BuildScrollArea("Viewer");
+
+			if(nPhotos > 0)
+			{	
+				SlideShowRow.style.display="block";
+				FirstButton.label = "View Slideshow";
+				FirstButton.focus();
+			
+				EmailRow.style.display="block";
+				EmailButton.label = "Send " + photosStr;
+			
+				PrintRow.style.display="block";
+				PrintButton.label = "Print " + photosStr;
+			
+				if(location != 1)
+				{
+					SaveRow.style.display="block";
+					SaveButton.label = "Save " + photosStr;
+				}
+				
+				if(!XMLFileURL && location != 2)
+				{
+					DeleteRow.style.display="block";
+					DeleteButton.label = "Delete " + photosStr;
+				}
+			
+				RotateRow.style.display = "block";
+				SizeRow.style.display = "block";
+
+				SpacerRow1.style.display = "block";
+				SpacerRow2.style.display = "block";
+				SpacerRow3.style.display = "block";
+		
+				CountStr.innerText = nPhotos + " " + photosStr.toLowerCase();
+			}
+			SetProgressPercent(95);
+		}
+		catch(ex)
+		{
+		}
+		setTimeout(InitDone,1);
+	}
+		
+	function InitDone()
+	{
+
+
+		if(g_fTruncated)
+		{
+			var info="Some photos from this folder can not be viewed. Your "+ProductShortName+" will only show 1,000 total items from this folder.";
+            warningCell.innerText=info;
+			warningTable.style.display="block";
+		}
+
+
+		HideProgressPanel();
+	}
+
+	setTimeout( Init, 10 );
+
+	</script>
+	
+</body>	
+</html>

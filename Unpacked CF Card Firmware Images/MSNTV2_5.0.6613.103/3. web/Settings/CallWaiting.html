@@ -1,0 +1,194 @@
+<HTML xmlns:msntv>
+	<TITLE>Call waiting settings</TITLE> 
+
+<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../HTC/SettingsHeading.htc">
+<?import namespace="msntv" implementation="../HTC/DropDownList.htc">
+
+	<SCRIPT LANGUAGE="Javascript" SRC="../Javascript/TVShell.js"></SCRIPT>
+	<SCRIPT LANGUAGE="Javascript" SRC="../Javascript/ServiceList.js"></SCRIPT>
+	<SCRIPT LANGUAGE="Javascript" SRC="../Javascript/ConnectionManager.js"></SCRIPT>
+	<SCRIPT LANGUAGE="Javascript" SRC="../Javascript/SettingsTemplate.js"></SCRIPT>
+	<LINK REL="StyleSheet" TYPE="text/css" HREF="../CSS/Settings.css">
+		<STYLE> table.controlTable td { padding-top: 7px; }
+
+</STYLE>
+		<SCRIPT>var ModemSettings = TVShell.ConnectionManager.ModemAdapter.Settings;</SCRIPT>
+		<BODY onLoad="onLoadPage();">
+			<FORM name="dialSettingsForm" onsubmit="return false;">
+				<SCRIPT>OpenSettingsTable( "Settings" , "Call waiting settings" , "" );</SCRIPT>
+				<DIV id="ScrollArea">
+					<DIV class="description">
+						<P>
+							If your phone line has call waiting, you can set your
+							<SCRIPT>document.write(ProductShortName);</SCRIPT>
+							to show a notice on-screen each time a call comes in while you're connected to the 
+							<SCRIPT>document.write(ServiceFullName);</SCRIPT>.
+						</P>
+						<P>
+							What do you want to happen when you're connected to the Internet and someone calls you?
+						</P>
+						<TABLE class="options">
+							<TR>
+								<TD><INPUT type="radio" name="callWaiting" onclick="UpdateControls();" checked>
+								<TD>
+							<EM>My phone line doesn't have call waiting</EM>
+							<TR>
+								<TD><INPUT type="radio" name="callWaiting" onclick="UpdateControls();">
+								<TD><EM>Ask me before disconnecting</EM><BR>
+									<SPAN class="description">
+						When asked, select <EM>Take Call</EM>, your phone will ring and you will be disconnected from the 
+						<SCRIPT>document.write(ServiceShortName);</SCRIPT> Service.  To use this feature you need to 
+						subscribe to your phone company's call waiting caller ID service.  When you use this feature 
+						the off-hook detection feature is also used.
+						</SPAN></TD>
+
+							<TR>
+								<TD><INPUT type="radio" name="callWaiting" onclick="UpdateControls();">
+								<TD><EM>Don't ask me, always disconnect from the Internet so that my phone will ring</EM><BR>
+
+							<TR>
+								<TD><INPUT type="radio" name="callWaiting" onclick="UpdateControls();">
+								<TD><EM>Keep me connected and let my caller hear a busy signal</EM><BR>
+									<SPAN class="description">
+						Select this option to stay connected to <SCRIPT>document.write(ServiceShortName);</SCRIPT>, when people call. 
+						To use this, you will also need to provide the prefix that your phone company uses to block call waiting. Type the prefix 
+						in the box below.
+						</SPAN></TD>
+							<TR>
+								<TD>
+								<TD><INPUT type="text" name="callWaitingPrefix" id="prefix" class="inputText" maxLength="30"
+										size="5"><br>
+									<SPAN class="description">Example: *70
+						</SPAN></TD>
+							</TR>
+						</TABLE>
+					</DIV>
+				</DIV>
+				<DIV id="sideBar">
+					<msntv:CustomButton href="javascript:submitChangesandExit()" class="buttonBarButton" id="Done" label="Save Changes" />
+					<msntv:CustomButton href="javascript:setSensitivity();" class="buttonBarButton" id="extra" label="Set Sensitivity" />
+					<msntv:CustomButton href="javascript:history.go(-1)" class="buttonBarButton" id="default" label="Cancel" />
+					<script>document.all("Done").focus();</script>
+				</DIV>
+				<SCRIPT>CloseSettingsTable();</SCRIPT>
+			</FORM>
+
+			<SCRIPT>
+				function onLoadPage() {
+					if (ModemSettings.CallWaitingMode == CallWaitingEnabledNotify) {
+						// unblocked call waiting service and notify user of an incoming call
+						document.dialSettingsForm.callWaiting[1].checked = true;
+					} else if (ModemSettings.CallWaitingMode == CallWaitingEnabledHangUp) {
+						// unblocked call waiting service and automatically hang-up when receiving an incoming call
+						document.dialSettingsForm.callWaiting[2].checked = true;
+					} else if (ModemSettings.CallWaitingMode == CallWaitingNone) {
+						// no call waiting service
+						document.dialSettingsForm.callWaiting[0].checked = true;
+					} else if (ModemSettings.CallWaitingMode == CallWaitingNone1) {
+						// No call waiting service.  Left in for backwards compatibility.
+						ModemSettings.CallWaitingMode = CallWaitingNone;
+						document.dialSettingsForm.callWaiting[0].checked = true;
+					} else if (ModemSettings.CallWaitingMode == CallWaitingDisabled) {
+						// block call waiting
+						document.dialSettingsForm.callWaiting[3].checked = true;
+					} else {
+						// this is an error but set to call waiting none by default
+						document.dialSettingsForm.callWaiting[0].checked = true;
+					}
+
+					document.dialSettingsForm.callWaitingPrefix.value = ModemSettings.CallWaitingPrefix;
+					UpdateControls();
+				}
+
+				function UpdateControls() {
+					document.all("prefix").disabled = document.dialSettingsForm.callWaiting[3].checked ? false : true;
+
+					if (document.dialSettingsForm.callWaiting[1].checked || document.dialSettingsForm.callWaiting[2].checked) {
+						document.all("extra").disabled = false;
+					} else {
+						document.all("extra").disabled = true;
+					}
+				}
+
+				function ValidPrefix(pr) {
+					var digits = "1234567890*";
+
+					if ( pr.length < 1 ) return false;
+
+					for ( var i = 0 ; i < pr.length ; i++ ) {
+						if ( digits.indexOf(pr.charAt(i)) == -1 ) return false;
+					}
+
+					return true;
+				}
+
+				function NavigateBack() {
+					history.go(-1);
+				}
+
+				function submitChangesandExit() {
+					if ( submitChanges() ) {
+						TVShell.PanelManager.AnimationMessageBox("Your changes have been saved.", "msntv:/Panels/Images/TaskCompleted.gif", "Task_Complete", 2000);
+						NavigateBack();
+					}
+				}
+
+				function submitChanges() {
+					var lastCWMode = ModemSettings.CallWaitingMode;
+					var lastCWPrefix = ModemSettings.CallWaitingPrefix;
+					var lastCWSensitivity = ModemSettings.CallWaitingSensitivity;
+
+					if (document.dialSettingsForm.callWaiting[0].checked) {
+						ModemSettings.CallWaitingMode = CallWaitingNone;
+						ModemSettings.CallWaitingSensitivity = 3;
+					} else if (document.dialSettingsForm.callWaiting[1].checked) {
+						ModemSettings.CallWaitingMode = CallWaitingEnabledNotify;
+						ModemSettings.OffHookDetect = true;
+					} else if (document.dialSettingsForm.callWaiting[2].checked) {
+						ModemSettings.CallWaitingMode = CallWaitingEnabledHangUp;
+					} else if (document.dialSettingsForm.callWaiting[3].checked) {
+						var prefix = document.dialSettingsForm.callWaitingPrefix.value + ModemSettings.DialPrefix;
+						var cwPrefix = document.dialSettingsForm.callWaitingPrefix.value;
+
+						if ( !ValidPrefix(cwPrefix) )
+						{
+						TVShell.PanelManager.CustomMessageBox(
+								"Type the prefix your phone company uses to block call waiting (for example, *70).",
+											"", "OK", 0, "", false, 0x30, 1 );
+						document.all("prefix").focus();
+						return false;
+						}
+						if(CheckFor911(prefix)) {
+							alert("You entered a prefix to block call waiting that may cause you to dial the emergency services number.  Please enter a new prefix.");
+							return false;
+						}
+						ModemSettings.CallWaitingMode = CallWaitingDisabled;
+						ModemSettings.CallWaitingSensitivity = 3;
+					} else {
+						// this is an error but set to call waiting enabled by default
+						ModemSettings.CallWaitingMode = CallWaitingNone;
+						ModemSettings.CallWaitingSensitivity = 3;
+					}
+
+					ModemSettings.CallWaitingPrefix = document.dialSettingsForm.callWaitingPrefix.value;
+
+					if (lastCWMode != ModemSettings.CallWaitingMode || lastCWPrefix != ModemSettings.CallWaitingPrefix ||
+						lastCWSensitivity != ModemSettings.CallWaitingSensitivity) {
+						ConnectionManagerSave();
+					}
+
+					return true;
+				}
+
+				function setSensitivity()
+				{
+					if ( submitChanges() ) {
+						document.location = "CallWaitingExtra.html";
+					} else {
+						history.go(0);
+					}
+				}
+			</SCRIPT>
+		</BODY>
+</HTML>

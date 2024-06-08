@@ -1,0 +1,123 @@
+<HTML xmlns:msntv> <?IMPORT namespace="msntv" implementation="../../HTC/CustomButton.htc"> <?IMPORT namespace="msntv" implementation="../../HTC/SettingsHeading.htc"> <TITLE>System Info</TITLE> <SCRIPT LANGUAGE=Javascript SRC="../../Javascript/TVShell.js"></SCRIPT> <SCRIPT language="Javascript" src="msntv:/Javascript/ConnectionManager.js"></SCRIPT><LINK REL="StyleSheet" TYPE="text/css" HREF="../../CSS/Settings.css"> <script LANGUAGE=Javascript>
+var SystemInfo = TVShell.SystemInfo;
+var gMemoryThreshold = null;
+var virtualThreshold = 0;
+var physicalThreshold = 0;
+var MEM_THRESHOLD_NAME = "LowMemThresholds";
+
+function init()
+{
+	gMemoryThreshold = TVShell.Property(MEM_THRESHOLD_NAME);
+	TVShell.Message("system.html      memory thresholds: " + gMemoryThreshold );
+	if ( gMemoryThreshold && gMemoryThreshold != "" ){
+		//  memory thresholds format:   onlinePhysical;onlineVirtual;offlinePhysical;offlineVirtual
+		var memStrArray = gMemoryThreshold.split(';');
+		if ( memStrArray.length >= 4 ){
+			if ( TVShell.UserManager.CurrentUser && TVShell.UserManager.CurrentUser.IsAuthorized ){
+				physicalThreshold = parseInt(memStrArray[0]);
+				virtualThreshold = parseInt(memStrArray[1]);
+			}
+			else{  // offline thresholds
+				physicalThreshold = parseInt(memStrArray[2]);
+				virtualThreshold = parseInt(memStrArray[3]);
+			}
+		}
+	}
+		
+	setTimeout("checkSystemHealth();", 10);
+	
+}
+
+
+
+function checkSystemHealth()
+{
+
+	if ( gMemoryThreshold && gMemoryThreshold != "" ){
+		TVShell.Message("system.html       P Avail=" + SystemInfo.AvailPhysicalMemory + "   V Avail=" + SystemInfo.AvailVirtualMemory );
+		if ( SystemInfo.AvailPhysicalMemory < physicalThreshold || SystemInfo.AvailVirtualMemory < virtualThreshold ){
+			systemHealthStatus.innerText = "Poor";
+			crashMeButt.style.display = "block";
+		}
+		systemHealthSection.style.display = "block";
+	}
+}
+
+
+
+function goCrashMe()
+{
+	TVShell.EventLog.CrashLogMgr.CrashTheSystem();
+}
+
+</script> </HEAD><BODY onload="init()"> <msntv:SettingsHeading label="System Information" /><DIV id=buttonBar> <SCRIPT>
+		if ((history.length > 0) && (!TVShell.UserManager.CurrentUser || !TVShell.UserManager.CurrentUser.IsAuthorized)) {
+			document.write("<msntv:CustomButton href='msntv:/Settings/ConnectHistory.html' class=buttonBarButton id=History label='Connection History' />");
+		}
+</SCRIPT> <msntv:CustomButton href="javascript:history.length > 0 ? history.go(-1) : TVShell.PowerOff()" class=buttonBarButton id=Done label="Done" /> <script>document.all("Done").focus();</script> </DIV><DIV id=nonScrollArea> <br><TABLE class=controlTable> <TR> <TD ALIGN="RIGHT"> Model: <TD ID="Platform" ALIGN="LEFT"> <TR> <TD ALIGN="RIGHT"> Box ID: <TD ID="BoxID" ALIGN="LEFT"> <TR> <TD ALIGN="RIGHT"> Software: <TD ID="Version" ALIGN="LEFT"> <TR> <TD ALIGN="RIGHT"> Boot ROM: <TD ID="BootROMVers" ALIGN="LEFT"> <TR> <TD ALIGN="RIGHT"> Memory: <TD ID="PhysMem" ALIGN="LEFT"> <TR id="systemHealthSection" style="display:none;"> <TD ALIGN="RIGHT"> System Health: <TD><table><tr><td id="systemHealthStatus">OK</td><td id="crashMeButt" style="display:none;"><msntv:CustomButton id="crashMe" label="Reset System" onclick="goCrashMe();" /></td></tr></table></td> </TR> <TR> <TD ALIGN="RIGHT"> Storage: <TD ID="Flash" ALIGN="LEFT"> <SCRIPT>
+		var VersionString = ServiceShortName + " ";
+
+		VersionString += "Version " + SystemInfo.LastVersion;
+		
+		if (SystemInfo.Flavor.toUpperCase() != "RELEASE")
+			VersionString += " ("+SystemInfo.Flavor+")";
+
+		Version.innerHTML = VersionString;
+
+		if (SystemInfo.BoardRevision != 2)
+			Platform.innerText = SystemInfo.ProductFullName + " (v"+SystemInfo.BoardRevision+")";
+		else
+			Platform.innerText = SystemInfo.ProductFullName;
+
+		BoxID.innerText = SystemInfo.BoxIDUI;
+
+		var TotalRAM = (SystemInfo.TotalPhysicalMemory + SystemInfo.ObjectStoreSize) / (1024*1024);
+
+		if (TotalRAM > 256)
+			PhysMem.innerText = "512 MB";
+		else
+		if (TotalRAM > 128)
+			PhysMem.innerText = "256 MB";
+		else
+		if (TotalRAM > 64)
+			PhysMem.innerText = "128 MB";
+		else
+		if (TotalRAM > 32)
+			PhysMem.innerText = "64 MB";
+		else
+		if (TotalRAM > 400)
+			PhysMem.innerText = "32 MB";
+		else
+			PhysMem.innerText = "N/A";
+
+		var flash_size = SystemInfo.CompactFlashSize;
+		flash_size = Math.round(flash_size/(1000*1000));
+		Flash.innerText = flash_size + " MB " + SystemInfo.CompactFlashModel;
+		BootROMVers.innerText = "N/A";
+		if ( SystemInfo.Platform.toUpperCase() == "RM4100") {
+			var BootRom = new ActiveXObject("MSNTV.BootRom");
+			BootRom.Read();
+			var DebugMode = "";
+			if (BootRom.DebugMode)
+				DebugMode = " (D)";
+			BootROMVers.innerText = BootRom.ROMVersion + "." + BootRom.ROMBuildNumber + DebugMode;
+		}
+
+		if (TVShell.ConnectionManager.WANProvider != BYOAEthernetProviderName &&
+			TVShell.ConnectionManager.ModemAdapter.Settings.TX_RXRates != "") {
+			document.write("<TR><TD ALIGN=\"RIGHT\">Web Accelerator:<TD ID=\"WAProcess\" ALIGN=\"LEFT\">");
+
+			switch(TVShell.WebAccelState)
+			{
+				case 2:
+					WAProcess.innerText = "Initializing"
+					break;
+				case 3:
+					WAProcess.innerText = "Running"
+					break;
+				default:
+					WAProcess.innerText = "Off"
+					break;
+			}
+		}
+	</SCRIPT> </TABLE> </DIV> </BODY>

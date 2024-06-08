@@ -1,0 +1,75 @@
+<HTML xmlns:msntv>
+<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../HTC/SettingsHeading.htc">
+<TITLE>Basic Dialing</TITLE>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/TVShell.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/ServiceList.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/ConnectionManager.js"></SCRIPT>
+
+<LINK REL=StyleSheet TYPE="text/css" HREF="../CSS/Settings.css">
+</HEAD>
+
+<SCRIPT>
+	var ModemSettings = TVShell.ConnectionManager.ModemAdapter.Settings;
+</SCRIPT>
+
+<BODY onLoad="onLoadPage();">
+<FORM name="dialSettingsForm">
+	<msntv:SettingsHeading label="Dialing options" />
+
+	<DIV id=buttonBar>
+		<msntv:CustomButton onclick="history.go(-2)" class=buttonBarButton label="Cancel" id="default" />
+		<msntv:CustomButton onclick="submitChanges()" class=buttonBarButton label="Continue" id=Done />
+		<script>document.all("Done").focus();</script>
+	</DIV>
+
+	<DIV id=nonScrollArea>
+		<DIV id=subTitle>Tone or pulse dialing</DIV>
+		<DIV class=description>
+			If your phone allows only pulse dialing, rather
+			than tone dialing, choose the <EM>My phone
+			allows only pulse dialing</EM> button.
+			<BR>
+			<TABLE class=controlTable>
+			<TR>
+				<TD><INPUT type=radio name="TonePulse" checked>
+				<TD>My phone allows tone dialing
+			</TR>
+			<TR>
+				<TD><INPUT type=radio name="TonePulse">
+				<TD>My phone allows only pulse dialing
+			</TR>
+			</TABLE>
+		</DIV>
+	</DIV>
+</FORM>
+
+</BODY>
+
+<SCRIPT>
+function onLoadPage()
+{
+	if (ModemSettings.Pulse) {
+		document.dialSettingsForm.TonePulse[1].checked = true;
+	} else {
+		document.dialSettingsForm.TonePulse[0].checked = true;
+	}
+}
+
+function submitChanges() 
+{
+	var dirty = false;
+
+	if (document.dialSettingsForm.TonePulse[1].checked != ModemSettings.Pulse) 
+	{
+		ModemSettings.Pulse = document.dialSettingsForm.TonePulse[1].checked;
+		dirty = true;
+	}
+	
+	document.location = "OffHook.html";	// calling this early (before the save) in order to turn the selection green faster
+
+	if (dirty) {
+		ConnectionManagerSave();
+    }
+}
+</SCRIPT>

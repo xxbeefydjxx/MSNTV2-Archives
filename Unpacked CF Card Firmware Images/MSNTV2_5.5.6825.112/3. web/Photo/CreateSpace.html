@@ -1,0 +1,465 @@
+<html xmlns:msntv>
+<?import namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../HTC/PhotoHeading.htc">
+<head>
+	<title>Photo Save Photos</title>	
+	<link rel=StyleSheet type="text/css" href="../css/Photo.css">
+	<link rel=StyleSheet type="text/css" href="../css/Base.css">
+<style>	
+
+		#overview
+		{
+			padding-top: 10px;
+			padding-bottom: 5px;
+		}
+
+		.item
+		{
+			font-family: Segoe TV;
+			font: 18px bold; 
+			color: #1D1D1D;
+		}	
+		.itemDescription
+		{
+			font-family: Segoe TV;
+			font: 18px bold; 
+			color:#444444;
+		}	
+		
+</style>
+
+<script LANGUAGE=Javascript SRC="msntv:/Javascript/TVShell.js"></script>
+<script LANGUAGE=Javascript SRC="msntv:/Javascript/ProgressPanel.js"></script>
+<script LANGUAGE=Javascript SRC="msntv:/Photo/PhotoSOAP.js"></script>
+
+<script>
+	
+	var spaceTitleStr = '<input  id="spaceTitle"  type="text" maxlength=30 style="width:260px;margin-top:5px;" value="';
+	spaceTitleStr+=curUserFriendlyName;
+	spaceTitleStr+='\'s space" >';
+	
+	var spaceAliasStr = '<input  id="spaceAlias"  type="text" maxlength=30 style="width:180px; margin-top:5px;" value="';
+	spaceAliasStr+=curUserName;
+	spaceAliasStr+='" >';	
+	
+	var suggestedNamesStr = "";
+
+	function escapeStr( str )
+	{
+		var modStr = str;
+		if ( modStr && modStr != "" ){
+			modStr = modStr.replace(/&/g, "&amp;");
+			modStr = modStr.replace(/</g, "&lt;");
+			modStr = modStr.replace(/>/g, "&gt;");
+			modStr = modStr.replace(/\"/g, "&quot;");
+		}
+
+		return modStr;
+	}
+	
+	function SetAlias(alias)
+	{
+		if(alias && alias!="")
+		{
+			spaceAlias.value = alias;
+		}
+	}
+	
+	function CreateSpace()
+	{
+		if(gAbort)
+			return;
+			
+		SetProgressStopFunction(null);
+			
+		var alias = spaceAlias.value;
+		if(!alias || alias=="")
+		{
+			HideProgressPanel();
+			alert("Unique name to identify the URL of your space cannot be empty.");
+			return;
+		}
+		var spaceTitleVal = spaceTitle.value;
+		if(!spaceTitleVal || spaceTitleVal=="")
+		{
+			HideProgressPanel();
+			alert("Title of your space cannot be empty.");
+			return;
+		}
+		
+		var paramsStr = '<CreateSpace xmlns="http://spaces.msn.com/mediacenter"><alias>';
+		paramsStr+=alias;
+		paramsStr+='</alias><title>';
+		paramsStr+= escapeStr(spaceTitleVal);
+		paramsStr+='</title></CreateSpace>';
+		
+		var soapReqBody = CreateSoapRequest(paramsStr);
+		
+		SetProgressPercent(70);			
+		CleanupXMLHTTPRequest();	
+		gXMLHttpRequest = PostSoapAction("POST", gASYNC, gSpacesServer, soapReqBody, HandleCreateSpace, "CreateSpace");		
+	}
+	
+	function HandleCreateSpace(httpRequest)
+	{
+		TVShell.Message("HandleCreateSpace");
+		if(gAbort)
+			return;
+			
+		// go to the online space
+		HideProgressPanel();
+		TVShell.EventLog.Usage("PhotoSharing", "CreateSpace");
+		var msg = "You've successfully created your online space.";
+		PanelManager.AnimationMessageBox(msg, "msntv:/Panels/Images/TaskCompleted.gif", "Task_Complete", 2000);	
+		setTimeout(OnCreateSpaceComplete, 1000);			
+	}
+
+
+	function continueToOrganize()
+	{
+		PanelManager.Item("main").NoBackToMe=true;
+		var destURL = "msntv:/Photo/PhotoOrganizer.html" + document.location.search;
+		mainPanel.GotoURL(destURL);		
+	}
+
+
+	function changePermissions()
+	{
+		var destURL = "msntv:/Photo/ShareSpace.html";
+		mainPanel.GotoURL(destURL);		
+	}
+
+	
+	function showCreateSpaceCompletePage()
+	{
+		var StorageDevice = GetOnlineStorageDevice();
+		Heading.label = "Information about your space";
+		yourSpace.innerHTML = "http://" + spaceAlias.value + "." + GetSpacesDomain() + "/";
+
+		var currPermission = StorageDevice.Property("Permission");
+		if ( StorageDevice && typeof( currPermission) != "undefined"){
+			permissionSpan.innerHTML = currPermission;
+		}
+		
+		TipCell.innerHTML = "Please be advised that spaces that do not conform to the code of conduct will be taken down and illegal content reported to authorities."
+		CancelButton.label = "Set Permissions";
+		CancelButton.onclick = changePermissions;
+		
+		ContinueButton.onclick = continueToOrganize;
+		createDiv.style.display = "none";
+		createSuccessDiv.style.display = "block";
+	}
+
+	
+	function OnCreateSpaceComplete()
+	{
+		showCreateSpaceCompletePage();
+	}
+	
+	function FindAlternativeAliases()
+	{
+		if(gAbort)
+			return;
+			
+		var alias = spaceAlias.value;
+		if(!alias || alias=="")
+		{
+			HideProgressPanel();
+			alert("Unique name to identify the URL of your space cannot be empty.");
+			return;
+		}
+		TVShell.Message("FindAlternativeAliases for " + alias);
+		
+		var paramsStr = '<FindAlternativeAliases xmlns="http://spaces.msn.com/mediacenter"><alias>';
+		paramsStr+=alias;
+		paramsStr+='</alias></FindAlternativeAliases>';
+		
+		var soapReqBody = CreateSoapRequest(paramsStr);
+		
+		CleanupXMLHTTPRequest();	
+		gXMLHttpRequest = PostSoapAction("POST", gASYNC, gSpacesServer, soapReqBody, HandleFindAlternativeAliases, "FindAlternativeAliases");		
+	}
+	
+	function HandleFindAlternativeAliases(httpRequest)
+	{
+		TVShell.Message("HandleFindAlternativeAliases");
+		if(gAbort)
+			return;
+			
+		var respNode = null;
+		if ( httpRequest.responseXML)
+			respNode = httpRequest.responseXML.selectNodes("//FindAlternativeAliasesResult/string");
+		
+		if(respNode)
+		{
+			TVShell.Message("respNode.value " + respNode[0].text);
+			var suggestedNamesStr = "";
+			
+			for(var i=0; (i < 3) && respNode[i]; i++)
+			{
+				var suggestedName = respNode[i].text;
+						
+				suggestedNamesStr+='<INPUT type=radio NAME=suggestedName ID="suggestedName';
+				suggestedNamesStr+=i;
+				suggestedNamesStr+='" VALUE="';
+				suggestedNamesStr+=suggestedName;
+				suggestedNamesStr+='" onclick=SetAlias("';
+				suggestedNamesStr+=suggestedName;
+				suggestedNamesStr+='")>';
+				suggestedNamesStr+= "&nbsp;&nbsp;" + suggestedName;
+				suggestedNamesStr+='<br>';					
+			}
+			SuggestedNamesList.innerHTML = suggestedNamesStr;        
+			SuggestedNamesDiv.style.visibility = "visible";		
+		}
+		
+		HideProgressPanel();
+		var msg = "The name that you typed is already in use or not available. Type a different name, or select a name from the suggested names list and hit <b>Continue</b>.";
+		PanelManager.CustomMessageBox(msg,"","OK;",0,"", true);
+	}
+	
+	function IsAliasAvailable()
+	{
+		if(gAbort)
+			return;
+			
+		var alias = spaceAlias.value;
+		if(!alias || alias=="")
+		{
+			HideProgressPanel();
+			alert("Unique name to identify the URL of your space cannot be empty.");
+			return;
+		}
+		TVShell.Message("IsAliasAvailable for " + alias);
+		
+		var paramsStr = '<IsAliasAvailable xmlns="http://spaces.msn.com/mediacenter"><alias>';
+		paramsStr+=alias;
+		paramsStr+='</alias></IsAliasAvailable>';
+		
+		var soapReqBody = CreateSoapRequest(paramsStr);
+		
+		CleanupXMLHTTPRequest();	
+		gXMLHttpRequest = PostSoapAction("POST", gASYNC, gSpacesServer, soapReqBody, HandleIsAliasAvailable, "IsAliasAvailable");		
+	}
+	
+	function HandleIsAliasAvailable(httpRequest)
+	{
+		TVShell.Message("HandleIsAliasAvailable");
+		if(gAbort)
+			return;
+			
+		var respNode = null;
+		if ( httpRequest.responseXML)
+			respNode = httpRequest.responseXML.selectSingleNode("//IsAliasAvailableResult");
+		if ( respNode )
+		{
+			if( respNode.text == "false")
+			{
+				// Suggest alternative aliases
+				SetProgressPercent(50);
+				SetProgressText("Finding alternative names, please wait ...");				
+				FindAlternativeAliases();			
+				return;
+			}
+
+			// Create the space
+			SetProgressPercent(50);
+			SetProgressText("Creating space, please wait ...");		
+			CreateSpace();
+		}
+		else
+		{
+			HideProgressPanel();
+			alert("MSNTV experienced a technical problem while creating your online storage. Please try again later.");		
+			return;
+		}
+	}
+	
+	function IsAliasValid()
+	{
+		if(gAbort)
+			return;
+			
+		var alias = spaceAlias.value;
+		if(!alias || alias=="")
+		{
+			HideProgressPanel();
+			alert("Unique name to identify the URL of your space cannot be empty.");
+			return;
+		}
+		TVShell.Message("IsAliasValid for " + alias);
+		
+		var paramsStr = '<IsAliasValid xmlns="http://spaces.msn.com/mediacenter"><alias>';
+		paramsStr+=alias;
+		paramsStr+='</alias></IsAliasValid>';
+		
+		var soapReqBody = CreateSoapRequest(paramsStr);
+		
+		CleanupXMLHTTPRequest();	
+		gXMLHttpRequest = PostSoapAction("POST", gASYNC, gSpacesServer, soapReqBody, HandleIsAliasValid, "IsAliasValid");		
+	}
+	
+	function HandleIsAliasValid(httpRequest)
+	{
+		TVShell.Message("HandleIsAliasValid");
+		if(gAbort)
+			return;
+			
+		var respNode = null;
+		if ( httpRequest.responseXML)
+			respNode = httpRequest.responseXML.selectSingleNode("//IsAliasValidResult");
+		
+		if(respNode)
+		{
+			if ( respNode.text == "false")
+			{		
+				HideProgressPanel();
+				var msg = "The name you typed is invalid. Valid characters are the letters a-z, A-Z, -, and 0-9. The name must begin and end with either a letter or a number.";
+				PanelManager.CustomMessageBox(msg,"","OK;",0,"", true);
+				
+				return;
+			}
+			// Check if alias is available
+			SetProgressPercent(30);
+			SetProgressText("Checking availability of name, please wait ...");		
+			IsAliasAvailable();
+		}
+		else
+		{
+			HideProgressPanel();
+			alert("MSNTV experienced a technical problem while creating your online storage. Please try again later.");		
+			return;
+		}
+	}
+	
+	function isValidName(str)
+	{
+		var isValid = /^[A-Za-z0-9\-]+$/.test(str);
+
+		return isValid;
+	}
+
+	function OnContinue()
+	{
+		var alias = spaceAlias.value;
+		if ( !isValidName(alias ) ){
+			var msg="The name is not valid.<br>Valid characters are the letters a-z, A-Z, -, and 0-9."
+			TVShell.PanelManager.CustomMessageBox(msg,"", "OK", 0,"", false, MGX_ICON_WARNING, MGX_SIZE_SMALL);
+			spaceAlias.focus();
+			return;
+		}
+		
+		gAbort = false;
+		SetProgressStopFunction( StopSOAPProgress);		
+		SetProgressText("Checking validity of name, please wait ...");
+		ShowProgressPanel();
+		SetProgressPercent(10);
+		
+		// Check if alias is valid
+		IsAliasValid();
+	}
+	
+	function OnCancel()
+	{
+		history.go(-1);
+	}
+
+	function Onload()
+	{
+		HideProgressPanel();
+		var StorageDevice = GetOnlineStorageDevice();
+		if ( StorageDevice && StorageDevice.Initialized){
+			showCreateSpaceCompletePage();
+ 		}
+ 		else
+ 			createDiv.style.display = "block";
+	}
+	
+	function OnUnload()
+	{
+		HideProgressPanel();
+		CleanupXMLHTTPRequest();
+	}
+</script>
+</head>
+<body topmargin=0 leftmargin=0 rightmargin=0 bottommargin=0 onload="Onload();" onunload="OnUnload();">
+
+		<msntv:PhotoHeading id=Heading label="Create your Windows Live&trade; space"/>
+	
+		<DIV id=sideBar>
+			<table cellpadding=0 cellspacing=0 width=100% align=center ID="Table1" >
+				<tr id="ContinueRow" style='display:block;'>
+					<td height=30 ><msntv:CustomButton onclick="OnContinue();" class=sideBarButton id="ContinueButton" label="Continue" /></td>
+				</tr>
+				<tr id="CancelRow" style="display:block;">
+					<td height=30 ><msntv:CustomButton onclick="OnCancel();" class=sideBarButton id="CancelButton" label="Cancel" /></td>
+				</tr>
+				<tr ><td id=TipCell style='padding:15 5 5 6;  color:#ffffff; font-size:15px; '> 
+						Tip: Names can have letters ( A-Z, a-z), -, and numbers (0-9). The name must begin and end with a letter or a number.
+	                 </td>
+	            </tr>
+			</table>			
+		</DIV>
+		
+		<DIV id=scrollArea>
+			<DIV id="createDiv" style="display:none;">
+			<DIV class=description id=overview>
+			Windows Live&trade; Spaces allows you to share photos online. You can use the information in the boxes below, or change it if you wish.
+			</DIV>
+			<div class=description id=descDiv>		
+				<table cellpadding=0 cellspacing=0>
+					<tr>
+						<td>
+							1. Type a title for your space:
+							<script>
+								document.write(spaceTitleStr);				
+							</script></td>
+					</tr>
+					<tr>
+						<td height=10px></td>
+					</tr>
+					<tr>
+						<td>
+							2. Type a name to identify the Web address (URL) of your space:
+							
+							<div style="font-size:15px;">http://
+							<script>
+								document.write(spaceAliasStr);
+								document.write("&nbsp;&nbsp;."+ GetSpacesDomain() +"/");
+							</script>
+							</div>
+						</td>
+					</tr>
+					<tr>
+						<td height=10px></td>
+					</tr>
+					<tr>
+						<td>
+							<div id="SuggestedNamesDiv" style="visibility:hidden;">	
+								Suggested names: 
+								<div id="SuggestedNamesList" style="font-size:15px; padding-top:10px;">
+									<script>
+										document.write(suggestedNamesStr);				
+									</script>
+								</div>
+							</div>
+						</td>
+					</tr>
+				</table>
+			</div>
+			</DIV>
+			
+			<DIV id="createSuccessDiv" style="display:none;">
+				<DIV class="description" id="successDiv">
+				<br>
+				Your Windows Live&trade; space has been created.<br><br>
+				Your space is located at: <br>
+				<span id="yourSpace">http://something</span><br><br>
+				Permissions specify who can view your space. You can share your space with everyone (Public), or with just the people you choose (Messenger).<br><br>
+				Your current permissions are set to <span id="permissionSpan" style="font-weight: bold;">Public</span>. To change your permissions, choose <em>Set Permissions</em>.
+						
+				</DIV>
+			</DIV>
+		</div>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+	<cfg:Configuration version="1.1" xmlns:cfg="http://schemas.microsoft.com/Passport/PPCRL">
+		<cfg:Settings>
+			<cfg:UpdateNeededInterval>604800</cfg:UpdateNeededInterval>
+			<cfg:ResolveTimeout>0</cfg:ResolveTimeout>
+			<cfg:ConnectTimeout>10000</cfg:ConnectTimeout>
+			<cfg:SendTimeout>30000</cfg:SendTimeout>
+			<cfg:ReceiveTimeout>30000</cfg:ReceiveTimeout>
+			<cfg:ConfigServerURI>http://clientconfig.passport-ppe.net/ppcrlconfig.srf</cfg:ConfigServerURI>
+			<cfg:Certificate></cfg:Certificate>		
+		</cfg:Settings>
+		<cfg:ServiceURIs>
+			<cfg:MSNDomain>msn-ppe.com</cfg:MSNDomain>
+			<cfg:DADomain>login.live-ppe.com</cfg:DADomain>
+			<cfg:WLDomain>live-ppe.com</cfg:WLDomain>
+			<cfg:LoginSrf>login.srf</cfg:LoginSrf>
+			<cfg:InvalidName><![CDATA["\%:[],#"<>;()]]></cfg:InvalidName>
+			<cfg:InvalidDomain><![CDATA[\%:[],#"<>;'()]]></cfg:InvalidDomain>
+			<cfg:InvalidUrl><![CDATA[\[],"<>';()]]></cfg:InvalidUrl>
+			<cfg:PostSrf>post.srf</cfg:PostSrf>
+			<cfg:SecureSrf>secure.srf</cfg:SecureSrf>
+			<cfg:LogoutSrf>logout.srf</cfg:LogoutSrf>
+			<cfg:TrustedDomain>live-ppe.com,msn-ppe.com,</cfg:TrustedDomain>
+			<cfg:PassportSecurityTokenService>https://login.live-ppe.com/RST.srf
+      </cfg:PassportSecurityTokenService>
+			<cfg:MSNPassportSecurityTokenService>https://msnia.login.live-ppe.com/RST.srf</cfg:MSNPassportSecurityTokenService>
+			<cfg:PassportSHA1Auth>https://login.live-ppe.com/ppsecure/SHA1Auth.srf
+      </cfg:PassportSHA1Auth>
+			<cfg:PassportMD5Auth>https://login.live-ppe.com/ppsecure/md5auth.srf
+      </cfg:PassportMD5Auth>
+			<cfg:URL_PasswordReset>https://login.live-ppe.com/resetpw.srf
+      </cfg:URL_PasswordReset>
+			<cfg:URL_PassportNetwork>https://accountservices.passport-ppe.net/ppnetworkhome.srf
+      </cfg:URL_PassportNetwork>
+			<cfg:URL_AccountServices>https://accountservices.passport-ppe.net/accountservices.srf
+      </cfg:URL_AccountServices>
+			<cfg:URL_PaneHelpFrame>https://accountservices.passport-ppe.net/hp.srf
+      </cfg:URL_PaneHelpFrame>
+		</cfg:ServiceURIs>
+	</cfg:Configuration>
+</Signature>

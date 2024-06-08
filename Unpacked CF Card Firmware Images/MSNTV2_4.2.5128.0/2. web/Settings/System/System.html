@@ -1,0 +1,51 @@
+<HTML xmlns:msntv> <?IMPORT namespace="msntv" implementation="../../HTC/CustomButton.htc"> <?IMPORT namespace="msntv" implementation="../../HTC/SettingsHeading.htc"> <TITLE>System Info</TITLE> <SCRIPT LANGUAGE=Javascript SRC="../../Javascript/TVShell.js"></SCRIPT> <SCRIPT language="Javascript" src="msntv:/Javascript/ConnectionManager.js"></SCRIPT><LINK REL="StyleSheet" TYPE="text/css" HREF="../../CSS/Settings.css"> </HEAD><BODY> <msntv:SettingsHeading label="System Information" /><DIV id=buttonBar> <msntv:CustomButton href="javascript:history.length > 0 ? history.go(-1) : TVShell.PowerOff()" class=buttonBarButton id=Done label="Done" /> <script>document.all("Done").focus();</script> </DIV><DIV id=nonScrollArea> <br><TABLE class=controlTable> <TR> <TD ALIGN="RIGHT"> Model: <TD ID="Platform" ALIGN="LEFT"> <TR> <TD ALIGN="RIGHT"> Box ID: <TD ID="BoxID" ALIGN="LEFT"> <TR> <TD ALIGN="RIGHT"> Software: <TD ID="Version" ALIGN="LEFT"> <TR> <TD ALIGN="RIGHT"> Boot ROM: <TD ID="BootROMVers" ALIGN="LEFT"> <TR> <TD ALIGN="RIGHT"> Memory: <TD ID="PhysMem" ALIGN="LEFT"> <TR> <TD ALIGN="RIGHT"> Storage: <TD ID="Flash" ALIGN="LEFT"> <SCRIPT>
+		var SystemInfo = TVShell.SystemInfo;
+
+		var VersionString = ServiceShortName + " ";
+
+		VersionString += "Version " + SystemInfo.LastVersion;
+		
+		if (SystemInfo.Flavor.toUpperCase() != "RETAIL")
+			VersionString += " ("+SystemInfo.Flavor+")";
+
+		Version.innerHTML = VersionString;
+
+		if (SystemInfo.BoardRevision != 2)
+			Platform.innerText = SystemInfo.ProductFullName + " (v"+SystemInfo.BoardRevision+")";
+		else
+			Platform.innerText = SystemInfo.ProductFullName;
+
+		BoxID.innerText = SystemInfo.BoxIDUI;
+
+		var TotalRAM = (SystemInfo.TotalPhysicalMemory + SystemInfo.ObjectStoreSize) / (1024*1024);
+
+		if (TotalRAM > 256)
+			PhysMem.innerText = "512 MB";
+		else
+		if (TotalRAM > 128)
+			PhysMem.innerText = "256 MB";
+		else
+		if (TotalRAM > 64)
+			PhysMem.innerText = "128 MB";
+		else
+		if (TotalRAM > 32)
+			PhysMem.innerText = "64 MB";
+		else
+		if (TotalRAM > 400)
+			PhysMem.innerText = "32 MB";
+		else
+			PhysMem.innerText = "N/A";
+
+		var flash_size = SystemInfo.CompactFlashSize;
+		flash_size = Math.round(flash_size/(1000*1000));
+		Flash.innerText = flash_size + " MB " + SystemInfo.CompactFlashModel;
+		BootROMVers.innerText = "N/A";
+		if ( SystemInfo.Platform.toUpperCase() == "RM4100") {
+			var BootRom = new ActiveXObject("MSNTV.BootRom");
+			BootRom.Read();
+			var DebugMode = "";
+			if (BootRom.DebugMode)
+				DebugMode = " (D)";
+			BootROMVers.innerText = BootRom.ROMVersion + "." + BootRom.ROMBuildNumber + DebugMode;
+		}
+	</SCRIPT> </TABLE> </DIV> </BODY>

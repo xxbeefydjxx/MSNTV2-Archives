@@ -1,0 +1,1995 @@
+<html xmlns:msntv>
+<?import namespace="msntv" implementation="../HTC/Progress.htc">
+<?import namespace="msntv" implementation="../HTC/CustomButton.htc">
+
+<head>
+<title>Media Panel</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta content="JavaScript" name="vs_defaultClientScript">
+<meta content="http://schemas.microsoft.com/intellisense/ie5" name="vs_targetSchema">
+<link rel="StyleSheet" type="text/css" href="../CSS/Panel.css">
+
+<style type="text/css">
+
+td {
+	font-size: 16px;
+	color: #7A9BCC;
+}
+
+#nowplayingMSNRadio {
+	position: absolute;
+	left: 0px;
+	top: 0px;
+	right: 0px;
+	z-index: 10;
+	visibility: hidden;
+}
+
+#nowplayingNormal { 
+	position: absolute;
+	left:15px;
+	top: 15px;
+	right: 15px;
+	height: 310px;
+}
+
+#nowplayingFullscreen { 
+	position: absolute;
+	left:0px;
+	top: 0px;
+	width: 100%;
+	height: 100%;
+	background-color: black;
+	visibility: hidden;
+}
+
+#Buttons {
+	visibility: hidden;
+	position: absolute;
+	left: 15px;
+	bottom: 15px;
+	height: 46px;
+	z-index: 1;
+}
+
+#vid {
+	position: absolute;
+	left:0px;
+	top: 0px;
+	z-index: 5;
+	visibility: hidden;
+}
+
+#buffering {
+	position: absolute;
+	left: 0px;
+	top: 240px;
+	z-index: 11;
+	visibility: hidden;
+}
+
+#flash {
+	position: absolute;
+	left: 15px;
+	top: 15px;
+	z-index: 7;
+};
+
+#NoMedia {
+	position: absolute;
+	left: 320px;
+	top: 0px;
+	right: 0px;
+	height: 264px;
+	padding: 8px 20px 0px 15px;
+	color: #7A9BCC;
+	background-color: #01040A;
+	border: 2px solid black;
+	z-index: 9;
+}
+
+#progress {
+	width: 100%;
+}
+
+#infoDivScroller {
+	height: 100%;
+	width: 100%;
+	padding-left: 15px;
+	padding-right: 22px;
+	overflow-y: auto;
+	behavior: url(../HTC/ScrollingDIV.htc);
+	background-color: #01040A;
+	border: 2px solid black;
+}
+
+.breakWord {
+	overflow: hidden;
+	word-wrap: break-word;
+}
+
+.bottombarButton {
+	font-size: 16px;
+	color: #002157;
+	text-align: center;
+	margin: 9px 0px 9px 8px;
+}
+
+</style>
+
+<script language="javascript" src="../Javascript/TVShell.js"></script>
+<script language="javascript" src="../Javascript/PanelImpl.js"></script>
+<script language="javascript" src="../Javascript/Panels.js"></script>
+<script language="javascript" src="../Javascript/VKCodes.js"></script>
+<script language="Javascript" src="../Javascript/ConnectionManager.js"></script>
+<script language="Javascript" src="../Javascript/ServiceList.js"></script>
+<script language="javascript" src="../Javascript/DMRCommon.js"></script>
+
+<script language=javascript>
+
+var ScreenSaver = TVShell.ScreenSaver;
+var utilities = TVShell.Utilities;
+var PanelManagerObj = TVShell.PanelManager;
+var MediaManagerObj = TVShell.MediaManager;
+var Sink = new ActiveXObject("MSNTV.MultipleEventSink");
+var DeviceControl = TVShell.DeviceControl;
+var	mediapanel = PanelManagerObj.Item("mediapanel");
+var screenWidth  = screen.availWidth;
+var screenHeight = screen.availHeight;
+
+var safeHeight = screenHeight;
+var safeWidth  = screenWidth;
+var safeBottom = screenHeight;
+var safeTop    = 0;
+var safeLeft   = 0;
+var startWithRetailDemo = 0;
+
+var mediaplayer = null;
+
+var globalMediumURL	 = "";
+var globalDownloadURL = "";
+var showDetailsForQA = false;
+var b_globalMediaLoaded = false;
+var b_LoadingURL = false;
+var globalReadyState = 0; // ReadyState property does not behave properly, it always give a value of 4. So set our own globalReadyState variable.
+var globalScreenState = 0;
+	MpReadyStateUninitialized =0;
+	MpReadyStateLoading = 1;
+	MpReadyStateInteractive = 3;
+	MpReadyStateComplete = 4;
+
+	MpStopped = 0;		//Playback is stopped
+	MpPaused = 1;		//Playback is paused
+	MpPlaying = 2;		//Stream is playing 
+	MpWaiting = 3;		//Waiting for stream to begin
+	MpScanForward = 4;	//Stream is scanning forward 
+	MpScanReverse = 5;	//Stream is scanning in reverse
+	MpClosed = 6;		//Stream is not open
+
+	MpNormalScreen = 0;
+	MpFullScreen = 1;
+
+	MpWindowsMediaPlayer = 0; // call videoie.MediaPlayerType to get the type of current low-level media ocx
+	MpHelixMediaPlayer = 1;
+	
+	MpErrorTypeUnsupportedFormat = 0;
+	MpErrorConnectionError = 1;
+    MpErrorTypeTechnicalProblem = 2;
+
+
+if (DeviceControl.UseSafeArea) {
+	// Safe area excludes 1/16 of the total screen all around
+	safeHeight -= screenHeight / 8;
+	safeWidth  -= screenWidth  / 8;
+	safeLeft = (screenWidth -  safeWidth)  / 2;
+	safeTop  = (screenHeight - safeHeight) / 2;
+	safeBottom = safeTop + safeHeight;
+}
+
+var bufferingState = false;
+var hasURL = false;
+var hasShownHideAlert = false;
+
+var WmpMediumFileExtensions = new Array(".asf",".wma",".wmv",".wm",".asx",".wax",".wvx",".wmx",".wpl",".wmd",
+									 ".mpg",".mpeg",".m1v",".mp2",".mp3",".mpa",".mpe",".mpv2",".m3u",".mpga",
+									 ".rmi",".aif",".aifc",".aiff",".au",".snd", ".wav",".ivf", ".nsc",".avi");
+
+var WmpStreamFileExtensions = new Array(".wma", ".wmv", ".wm", ".asf");
+
+var WmpCacheFileExtensions = new Array(".asx",".aspx");
+
+var WmpPlayListFileExtensions = new Array(".asx", ".wax", ".wvx", ".wmx", ".wpl");
+
+var WmpStreamFileProtocols = new Array("mms:", "mmst:", "mmsu:");
+
+var HelixUnsupportedFileExtensions = new Array(".rt",".smi",".smil");
+
+var HelixStreamFileExtensions = new Array(".ra",".ram",".rm",".rmm",".rv",".rmvb",".rpm");
+
+
+var ControlPanelTimeoutID;
+var ControlPanelTimeout = 15000;
+
+var bufferingTimeoutID;
+var bufferingTimeout = 100;
+
+var positionTimeoutID;
+var positionTimeout = 500;
+
+
+function PutDefaultFocus()
+{
+	Play.focus();
+}
+
+function HasVideo()
+{
+//	TVShell.Message("HasVideo: state = " + globalReadyState + "  width = " + videoie.ImageSourceWidth + "  height = " + videoie.ImageSourceHeight);
+	if (globalReadyState >= MpReadyStateInteractive && videoie.ImageSourceWidth > 0 && videoie.ImageSourceHeight > 0)
+		return true;
+	else
+		return false;
+}
+
+function IsVideoFitInWindow()
+{
+	if (videoie.ImageSourceHeight/videoie.ImageSourceWidth == 0.75)
+		return true;
+	else
+		return false;
+}
+
+function rew_video()
+{
+//	TVShell.Message("Duration = " +  videoie.Duration + " IDV= " + videoie.IsDurationValid + " CP = " + videoie.CurrentPosition + "SS= "+videoie.SelectionStart + " SE=" + videoie.SelectionEnd );
+
+
+//	TVShell.Message("media: CS = " + videoie.CanScan + " Seek = " + videoie.CanSeek + " An = " + videoie.AllowScan + 
+//	"AR= " + videoie.AutoRewind + " CSM = " + videoie.CanSeekToMarkers +  " CM = "+ videoie.CurrentMarker +
+//	" MC=" +  videoie.MarkerCount + " AS = " +  videoie.AutoStart + videoie.CurrentPosition  );
+
+	if (nowplayingMSNRadio.style.visibility == "visible" || IsMSNRadioNoIFrame()) {
+		// when play MSN Radio service, we remove REW button and place Next button on the same location. And skip to next song.
+		var currentEntryNum = videoie.GetCurrentEntry();
+		if (currentEntryNum > 0)
+		{
+			var url = videoie.GetMediaParameter(currentEntryNum, 'NextAsxFile');
+			if (url)
+			{
+				videoie.Stop();			
+				globalDownloadURL = url;
+				setTimeout("PanelManagerObj.StartDownload(globalDownloadURL);", 1);
+			}
+			else
+				videoie.Next();
+		}
+		return;
+	}
+
+	if (globalReadyState < MpReadyStateComplete)
+		return;
+		
+	videoie.AutoStart = false; 
+
+	if (videoie.CanScan && videoie.AllowScan) {	
+		videoie.FastReverse();			
+	} else if (videoie.CanSeek) {
+		var length = videoie.Duration;
+		if (length) {
+			var decrement = Math.min(Math.max(Math.round(length/10), 1), 60);
+			var currentPos = videoie.CurrentPosition;
+			if (currentPos <= decrement)
+				videoie.CurrentPosition = 0;		
+			else
+				videoie.CurrentPosition = currentPos - decrement;
+		}
+	}
+	UpdatePositionTime();
+
+//	TVShell.Message("media: CS = " + videoie.CanScan + " Seek = " + videoie.CanSeek + " An = " + videoie.AllowScan + 
+//	"AR= " + videoie.AutoRewind + " CSM = " + videoie.CanSeekToMarkers +  " CM = "+ videoie.CurrentMarker +
+//	" MC=" +  videoie.MarkerCount+ " AS = " +  videoie.AutoStart  );
+}
+
+function ff_video()
+{
+//	TVShell.Message("Duration = " +  videoie.Duration + " IDV= " + videoie.IsDurationValid + " CP = " + videoie.CurrentPosition + "SS= "+videoie.SelectionStart + " SE=" + videoie.SelectionEnd );
+
+//	TVShell.Message("media: CS = " + videoie.CanScan + " Seek = " + videoie.CanSeek + " An = " + videoie.AllowScan + 
+//	"AR= " + videoie.AutoRewind + " CSM = " + videoie.CanSeekToMarkers +  " CM = "+ videoie.CurrentMarker +
+//	" MC=" +  videoie.MarkerCount + " AS = " +  videoie.AutoStart + videoie.CurrentPosition  );
+
+	if (globalReadyState < MpReadyStateComplete)
+		return;
+		
+	videoie.AutoStart = false; 
+
+	if (videoie.CanScan && videoie.AllowScan) {
+		videoie.FastForward();	
+	} else if (videoie.CanSeek) {
+		var length = videoie.Duration;
+		if (length) {
+			var increment = Math.min(Math.max(Math.round(length/10), 1), 60);
+			var currentPos = videoie.CurrentPosition;
+			if (currentPos + increment >= length)
+				videoie.CurrentPosition = length;			
+			else
+				videoie.CurrentPosition = currentPos + increment;
+		}
+	}
+	UpdatePositionTime();
+
+//	TVShell.Message("media: CS = " + videoie.CanScan + " Seek = " + videoie.CanSeek + " An = " + videoie.AllowScan + 
+//	"AR= " + videoie.AutoRewind + " CSM = " + videoie.CanSeekToMarkers +  " CM = "+ videoie.CurrentMarker +
+//	" MC=" +  videoie.MarkerCount+ " AS = " +  videoie.AutoStart  );
+}
+
+function play_video()
+{
+	// fixme -- needs to handle Helix as well
+	if (MediaManagerObj.Count == 0) {
+		mediaplayer = new ActiveXObject("MSNTV.WMPShim");
+		MediaManagerObj.AddMedia(mediaplayer);
+		if (globalScreenState == MpNormalScreen)
+			show_normalscreen();
+		else if (globalScreenState == MpFullScreen)
+			show_fullscreen();
+		ResetButtons();
+		globalReadyState = MpReadyStateUninitialized;
+		SetGlobalMediumURL();
+		return;
+	}
+
+	if (bufferingState && videoie.PlayState != MpPaused) {
+		if (nowplayingNormal.style.visibility == "hidden" &&
+			nowplayingFullscreen.style.visibility == "visible")
+		{
+			clearTimeout(ControlPanelTimeoutID);
+			ControlPanelTimeoutID = setTimeout(HideControlPanel, ControlPanelTimeout);
+		}
+		return;
+	}
+	TVShell.Message("globalReadyState="+globalReadyState+" hasError="+videoie.HasError + " currentPlayState="+currentPlayState);
+	
+	clearTimeout(positionTimeoutID);
+
+	if (globalReadyState > MpReadyStateLoading && videoie.HasError) {
+		HandleError();
+		return;	
+	}
+	if (currentPlayState != MpPlaying) {
+		vid.style.visibility = "visible";
+		if (globalReadyState > MpReadyStateLoading)
+			videoie.Play();
+		else {
+			SetGlobalMediumURL();
+		}
+
+		if (nowplayingNormal.style.visibility == "hidden" &&
+			nowplayingFullscreen.style.visibility == "visible")
+		{
+			clearTimeout(ControlPanelTimeoutID);
+			ControlPanelTimeoutID = setTimeout(HideControlPanel, ControlPanelTimeout);
+		}
+	} 
+	positionTimeoutID = setInterval("UpdatePositionTime()", positionTimeout);
+
+}
+
+function pause_stop_video()
+{
+	if (videoie.IsBroadcast)
+		stop_video();
+	else
+		pause_video();
+}
+
+function pause_video()
+{	
+//	TVShell.Message("globalReadyState="+globalReadyState+" hasError="+videoie.HasError + " currentPlayState="+currentPlayState);
+	
+	clearTimeout(positionTimeoutID);
+
+	if (globalReadyState > MpReadyStateLoading && videoie.HasError) {
+		HandleError();
+		return;	
+	}
+
+	if ((videoie.PlayState == MpPlaying || videoie.PlayState == MpScanForward || videoie.PlayState == MpScanReverse) && 
+		globalReadyState > MpReadyStateLoading && !videoie.IsBroadcast) {
+		videoie.Pause();
+		if (nowplayingNormal.style.visibility == "hidden" &&
+			nowplayingFullscreen.style.visibility == "visible")
+		{
+			clearTimeout(ControlPanelTimeoutID);
+		}
+	}
+}
+
+function stop_video()
+{
+	if (b_LoadingURL) {
+		videoie.Cancel();
+		b_LoadingURL = false;
+		return;
+	}
+
+	if (globalReadyState <= MpReadyStateLoading)
+		return;
+
+	if (videoie.HasError) {
+		HandleError();
+		return;
+	}
+
+//	TVShell.Message("media: CanScan = " + videoie.CanScan + " CanSeek = " + videoie.CanSeek + " AllowScan = " + videoie.AllowScan + 
+//	" AutoRewind= " + videoie.AutoRewind + " CSM = " + videoie.CanSeekToMarkers +  " CM = "+ videoie.CurrentMarker +
+//	" MC=" +  videoie.MarkerCount + " AS = " +  videoie.AutoStart + " CurrentPosition=" + videoie.CurrentPosition  );
+
+	TVShell.Message("globalReadyState="+globalReadyState+" hasError="+videoie.HasError + " currentPlayState="+currentPlayState);
+
+	if (videoie.CanSeek) {
+		videoie.CurrentPosition = 0;
+	}
+	videoie.Stop();
+	ClearBufferingInfo();
+	ShowPlayState(videoie.PlayState);
+	if (nowplayingNormal.style.visibility == "hidden" &&
+		nowplayingFullscreen.style.visibility == "visible")
+	{
+		clearTimeout(ControlPanelTimeoutID);
+	}
+}
+
+
+function show_normalscreen()
+{
+	var statusTop = safeBottom;
+	var statusHeight = 36;
+	var	statuspanel = PanelManagerObj.Item("statusbar");
+	globalScreenState = MpNormalScreen;
+	nowplayingFullscreen.style.visibility = "hidden";
+	nowplayingMSNRadio.style.visibility = "hidden";
+	if (IsHighSpeed()) {
+		FullScreenButton.style.visibility = "visible";
+		HideButton.style.visibility = "visible";
+	}
+	else {
+		FullScreenButton.style.visibility = "hidden";
+		HideButton.style.visibility = "hidden";
+	}
+	playState.style.visibility = "visible";
+	playStateMSNRadio.style.visibility = "hidden";
+	document.all.msnRadio.src = "";
+	videoie.SetWindowRect(15, 15, 320, 240);
+	if (statuspanel) {
+		mediapanel.ZOrder = statuspanel.ZOrder - 5;
+		statusTop -= statusHeight;
+	}
+	mediapanel.EndRect(safeLeft, statusTop - 340, safeWidth, 340);
+	vid.style.visibility = "visible";
+	flash.style.visibility = "visible";	
+	flash.style.pixelTop = 15;
+	flash.style.pixelLeft = 15;
+	Buttons.style.pixelBottom = 15;
+	Buttons.style.visibility = "visible";
+	nowplayingNormal.style.visibility = "visible";
+	PutDefaultFocus();
+	clearTimeout(ControlPanelTimeoutID);
+}
+
+function show_fullscreen()
+{
+	var	statuspanel = PanelManagerObj.Item("statusbar");
+	globalScreenState = MpFullScreen;
+	nowplayingNormal.style.visibility = "hidden";
+	videoie.SetWindowRect(0, 0, safeWidth, safeHeight - 62);
+	if (statuspanel) {
+		mediapanel.ZOrder = statuspanel.ZOrder + 5;
+	}
+	mediapanel.EndRect(safeLeft, safeTop, safeWidth, safeHeight);
+	vid.style.visibility = "visible";
+	flash.style.visibility = "visible";	
+	flash.style.pixelTop = 60;
+	flash.style.pixelLeft = (safeWidth - 320) / 2;
+	Buttons.style.pixelBottom = 10;
+	nowplayingFullscreen.style.visibility = "visible";
+	ShowControlPanel();
+	PutDefaultFocus();
+	clearTimeout(ControlPanelTimeoutID);
+	ControlPanelTimeoutID = setTimeout(HideControlPanel, ControlPanelTimeout);
+}
+
+function show_MSNRadioService()
+{
+	document.all.msnRadio.src = "msntv:/shell/empty.html";
+	nowplayingMSNRadio.style.visibility = "visible";
+
+	vid.style.visibility = "hidden";
+	flash.style.visibility = "hidden";
+	FullScreenButton.style.visibility = "hidden";
+	HideButton.style.visibility = "visible";
+	playState.style.visibility = "hidden";
+	playStateMSNRadio.style.visibility = "visible";
+
+	PutDefaultFocus();
+	
+	var entryNum = videoie.GetCurrentEntry();
+	var url = videoie.GetMediaParameter(entryNum, 'IFrameContent');
+	if (url) {
+		var CurrentUser = TVShell.UserManager.CurrentUser;
+		if (CurrentUser) {
+			var MSNRadioEntry = CurrentUser.ServiceList.Item("home::radioplus"); 
+			if (MSNRadioEntry) {
+				document.all.msnRadio.src = TVShell.Utilities.CombineURl (MSNRadioEntry.URL, url, 0);
+			}
+		}
+	}
+
+	if (CanSkipClip()) {
+		// remove REW button and put NEXT button for MSN Radio service
+		RewButton.style.src = "url(Assets/PanelPlayerControlNext.png)";
+		RewButton.style.visibility = "visible";
+		Rewind.tabIndex = 0;
+	}
+}
+
+function SelectMediaLogo()
+{
+	if (videoie.MediaPlayerType == MpHelixMediaPlayer) {
+		NormalScreenWMPLogo.style.display = "none";
+		FullScreenWMPLogo.style.display = "none";
+		NormalScreenHelixLogo.style.display = "inline";
+		FullScreenHelixLogo.style.display = "inline";
+	} else {
+		NormalScreenHelixLogo.style.display = "none";
+		FullScreenHelixLogo.style.display = "none";
+		NormalScreenWMPLogo.style.display = "inline";
+		FullScreenWMPLogo.style.display = "inline";
+	}
+}
+
+function IsUserAuthorized()
+{
+	var CurrentUser = TVShell.UserManager.CurrentUser;
+	if (CurrentUser && CurrentUser.IsAuthorized)
+		return true;
+	else 
+		return false;
+}
+
+var b_SetDisplaySize=false;
+function OnBeforeShow(name)
+{
+	if (name == "mediapanel") {
+		if (!hasURL && (!videoie.HasError || !IsUserAuthorized())) {
+			show_DefaultScreen()
+			return;
+		}
+		
+		var timeWidth = PanelManagerObj.FontSize < 4 ? 45 : 52;
+		var playStateWidth = 220 - (timeWidth * 2);
+
+//		TVShell.Message("media: OnBeforeShow " + name + " " + videoie.DisplaySize + " " + b_SetDisplaySize);
+//		TVShell.Message("D = " + videoie.Duration + " %60 = " + videoie.Duration%60 + "round=" + Math.floor(videoie.Duration%60) + " Max= " + Math.max(Math.floor(videoie.Duration%60),0) + " for=" + sec );   
+
+		SelectMediaLogo();
+		totalTime.style.pixelWidth = timeWidth;
+		positionTime.style.pixelWidth = timeWidth;
+		playState.style.pixelWidth = playStateWidth;
+		if (videoie.IsDurationValid) {
+			var min = formatTime(Math.max(Math.floor(videoie.Duration/60),0));
+			var sec = formatTime(Math.max(Math.floor(videoie.Duration%60),0));
+			totalTime.innerText = min + ":" + sec;
+			PlayButton.style.visibility="visible";
+			PauseButton.style.visibility="visible";
+			StopButton.style.visibility="visible";
+			Stop.tabIndex = 0;
+			LiveMediaStopButton.style.visibility="hidden";
+		} else if (videoie.IsBroadcast) {
+			totalTime.innerText = "Live";
+			PlayButton.style.visibility="visible";
+			StopButton.style.visibility="hidden";
+			Stop.removeAttribute('tabIndex');
+			PauseButton.style.visibility="hidden";
+			LiveMediaStopButton.style.visibility="visible";
+		} else {
+			totalTime.innerText = "    ";
+			PlayButton.style.visibility="visible";
+			PauseButton.style.visibility="visible";
+			StopButton.style.visibility="visible";
+			Stop.tabIndex = 0;
+			LiveMediaStopButton.style.visibility="hidden";
+		}
+			
+		if (nowplayingMSNRadio.style.visibility == "hidden") {
+			TVShell.Message("OnBeforeShow:  playerType = " + videoie.MediaPlayerType + "  playerState = " + videoie.PlayState);
+			HelixStartupImg.src = "Assets/PanelPlayerLogoReal.png";
+			if (!HasVideo() || videoie.PlayState != MpPlaying)
+				defaultImg.src = "Assets/PanelPlayerDefaultScreen.jpg";
+			fullScreenImg.src = "msntv:/Panels/Images/PanelPlayerSmallBG.jpg";
+
+			if (hasURL) {
+				PutDefaultFocus();
+			}
+			else {
+				if (NoMedia.style.visibility == "visible")
+					GoToMSNRadio.focus();
+			}
+		
+			if (videoie.PlayState >= MpPlaying && videoie.ReadyState > MpReadyStateInteractive && !HasVideo()) {
+				ShowAudioVisualization(true);
+			} else if (videoie.PlayState == MpPlaying && HasVideo()) {
+				videoie.SetWindowRect(-1, -1, -1, -1);
+			}
+		}
+	}
+}
+
+function OnAfterShow(name)
+{
+	if (name == "mediapanel" && videoie.PlayState == MpPlaying && HasVideo()){
+		videoie.SetWindowRect(15, 15, 320, 240);
+	}
+}
+
+function OnBeforeFirstShow(name)
+{
+	if (name == "mediapanel"){
+		TVShell.Message("media: OnBeforeFirstShow");
+		videoie.SetWindowRect(15, 15, 320, 240);
+		nowplayingMSNRadio.style.visibility = "hidden";	
+	}
+}
+
+function OnBeforeHide(name)
+{
+	if (name=='mediapanel') {
+		if (nowplayingMSNRadio.style.visibility == "hidden" && NoMedia.style.visibility == "hidden" && !videoie.HasError)
+			if (!IsMSNRadioNoIFrame())
+				show_normalscreen();
+
+		if (!IsHighSpeed() && nowplayingMSNRadio.style.visibility == "hidden") {
+			if (IsMSNRadioNoIFrame())
+				return;
+
+	   		if (!videoie.HasError && hasURL) {
+ 				stop_video();
+			}
+	   		ClearBufferingInfo();
+		}
+		else if (!b_LoadingURL && !hasShownHideAlert && !videoie.HasError && hasURL && videoie.PlayState >= MpPlaying && TVShell.IsOn) {
+			hasShownHideAlert = true;
+//			var delayed=PanelManagerObj.DelayedPanel;
+//			PanelManagerObj.CustomMessageBox("Windows Media Player is being hidden from view. Your media will continue to play while the player is hidden.<p><p>When you want to show the player again, press the <EM>Music/Video</EM> key on your keyboard.", "", "OK", 0, ""); 
+//			PanelManagerObj.DelayedPanel=delayed;
+		}
+	}
+}
+function ReleaseMediaControl()
+{
+//	TVShell.Message("ReleaseMediaControl");
+	if (b_globalMediaLoaded) {
+		ClearBufferingInfo();
+		videoie.URL = "";
+		globalReadyState = MpReadyStateUninitialized;
+		ResetButtons();
+	}
+}
+function OnAfterHide(name)
+{
+	if (name=='mediapanel') {
+		HelixStartupImg.src = "msntv:/Images/1x1.gif";
+		defaultImg.src = "msntv:/Images/1x1.gif";
+		fullScreenImg.src = "msntv:/Images/1x1.gif";
+		ShowAudioVisualization(false);
+
+		TVShell.Message("onafterhide playstate="+videoie.PlayState);
+		if (!b_LoadingURL && videoie.PlayState == MpStopped) {
+			ReleaseMediaControl();
+		}
+	}
+}
+
+function ShowPlayState(state)
+{
+	var	stateStr = "";
+
+	switch(state) {
+	case MpStopped:
+		stateStr = "Stopped";
+		break;
+	case MpPaused:
+		stateStr = "Paused";
+		break;
+	case MpPlaying:
+		stateStr = "Playing";
+		break;
+	case MpScanForward:
+		stateStr = "Forwarding";
+		break;
+	case MpScanReverse:
+		stateStr = "Rewinding";
+		break;
+	}
+
+	playState.innerText = stateStr;
+	playStateFullScreen.innerText = stateStr;
+	playStateMSNRadio.innerText = stateStr;
+}
+			
+function UpdateBufferingTime()
+{
+	var num = videoie.BufferingProgress;
+
+	clearTimeout(bufferingTimeoutID);	
+
+	if (num < 100) {
+		if (num > 0) {
+			if (PanelManagerObj.FontSize < 4) {
+				playState.innerText = "Loading (" + num +"%)";
+			}
+			else {
+				playState.innerText = "Loading " + num +"%";
+			}
+			playStateFullScreen.innerText = "Loading";
+			playStateMSNRadio.innerText = "Loading";
+		}
+		bufferingTimeoutID = setTimeout("UpdateBufferingTime()", bufferingTimeout);
+	}
+	else if (bufferingState) {
+		ShowPlayState(videoie.PlayState);
+		bufferingState = false;	// We don't receive an end buffering event while paused.
+	}
+}
+
+function formatTime(time)
+{
+	if (time<10)
+		time = "0" + time;
+	return time;
+}
+
+function UpdatePositionTime()
+{
+//	TVShell.Message("Current Bandwidth = "+videoie.Bandwidth);
+	var currentPos = videoie.CurrentPosition;
+	var min = formatTime(Math.max(Math.floor(currentPos/60),0));
+	var sec = formatTime(Math.max(Math.floor(currentPos%60),0));
+	positionTime.innerText = min + ":" + sec;
+	progress.percentComplete = Math.round(currentPos/videoie.Duration*100);
+
+	var focusedPanel = PanelManagerObj.FocusedPanel;
+	if (focusedPanel && focusedPanel.Name == 'mediapanel')
+		ScreenSaver.UserActive();
+
+	UpdateMediaInfo();
+
+	
+}
+
+function UpdateMediaInfo()
+{
+	if (showDetailsForQA && NoMedia.style.visibility == "hidden") 
+	{
+		ActualFrameRate.innerText=videoie.ActualFrameRate;
+		FrameRate.innerText=videoie.FrameRate;
+		FrameDropped.innerText=videoie.FrameDropped;
+		MemoryUsed.innerText=videoie.MemoryUsed;
+		AvailableMemory.innerText=videoie.AvailableMemory;
+		ReceivedPackets.innerText=videoie.ReceivedPackets;
+		RecoveredPackets.innerText=videoie.RecoveredPackets;
+		LostPackets.innerText=videoie.LostPackets;
+		ReceptionQuality.innerText=videoie.ReceptionQuality;
+	}
+}
+
+function Buffering(bStart)
+{
+//	TVShell.Message("buffering=" + bStart + " playstate = " + videoie.PlayState);
+
+	bufferingState = bStart;
+
+	clearTimeout(bufferingTimeoutID);
+
+	if (bStart) {	
+		bufferingTimeoutID = setTimeout("UpdateBufferingTime()", bufferingTimeout);
+	}
+	else {
+		ShowPlayState(videoie.PlayState)
+	}
+}
+
+function ClearAll()
+{
+	ClearInfo();
+	ClearBufferingInfo();
+	totalTime.innerText="00:00";
+	ShowAudioVisualization(false);
+}
+
+function ClearInfo()
+{
+	infoDiv.innerHTML = "<table id='infoTable' width=100% cellpadding=0 cellspacing=0>" +
+									 "<tr><td style='padding:8px 0px 2px 0px; font-weight:bold; font-size:20px; color:#AFC0CC;'>Now playing</td></tr></table>";
+	infoDivScroller.MyDoScroll("scrollToStart");
+}
+
+
+function FilenameFromPath(path)
+{
+	var fileName = path.slice(Math.max(path.lastIndexOf('/')+1, path.lastIndexOf('\\')+1));
+
+	if (fileName) {
+		fileName = fileName.substr(0, fileName.lastIndexOf('.'));
+	}
+
+	return fileName;
+}
+
+function ShowInfo()
+{
+	ClearInfo();
+
+	var mpHasMultipleItems	= videoie.HasMultipleItems;
+	var mpPlaylistTitle		= null;
+	var mpClipTitle			= videoie.GetMediaInfoString(8);
+	var mpClipAuthor		= videoie.GetMediaInfoString(9);
+	var mpClipDescription	= videoie.GetMediaInfoString(12);
+
+	var artistStr			="Artist";
+	var albumStr			="Album";
+	
+	if (HasVideo()) {
+		var artistStr		="Author";
+		var albumStr		="Description";	
+	}
+
+	var outputStr = "<table id='infoTable' width=100% cellpadding=0 cellspacing=0>" +
+					"<tr><td style='padding:8px 0px 2px 0px; font-weight:bold; font-size:20px; color:#AFC0CC;'>Now playing</td></tr>";
+
+	if (mpHasMultipleItems) {
+		mpPlaylistTitle = videoie.GetMediaInfoString(1);
+		if (!mpPlaylistTitle) {
+			var mpShowFilename = videoie.GetMediaInfoString(0);
+			if (mpShowFilename) {
+				mpPlaylistTitle = FilenameFromPath(mpShowFilename);
+			}
+		}
+	}
+
+	if (!mpClipTitle)
+	{
+		var mpSourceLink = videoie.SourceLink;
+		if (!mpSourceLink) {
+			mpSourceLink = videoie.URL;
+		}
+		if (mpSourceLink) {	
+			mpClipTitle = FilenameFromPath(mpSourceLink);	
+		}
+	}
+
+	if (mpPlaylistTitle)
+	{
+		outputStr+="<tr><td><span style='padding:6px 0px 2px 0px; font-weight:bold; color:#AFC0CC'>" + utilities.EscapeHTML(mpPlaylistTitle) + "</span>";
+	}
+
+	if (!mpHasMultipleItems || videoie.PlayState != MpStopped) {
+		if(mpClipTitle)
+		{
+			outputStr+="<tr><td><span style='padding-top:6px; font-weight:bold; color:#AFC0CC'>Title:</span>";
+			outputStr+="<tr><td><span id='clipTitle' class='breakWord' style='width:100px;'>" +  utilities.EscapeHTML(mpClipTitle) + "</span>";
+		}
+		if(mpClipAuthor)
+		{
+			outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>" + artistStr + ":</span>";
+			outputStr+="<tr><td><span id='clipArtist' class='breakWord' style='width:100px;'>" + utilities.EscapeHTML(mpClipAuthor) + "</span>";
+		}
+		if(mpClipDescription)
+		{
+			outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>" + albumStr + ":</span>";
+			outputStr+="<tr><td><span id='clipAlbum' class='breakWord' style='width:100px;'>" + utilities.EscapeHTML(mpClipDescription) + "</span>";
+		}
+	}
+
+	if (showDetailsForQA && NoMedia.style.visibility == "hidden")
+	{
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>SourceLink:</span>";
+		outputStr+="<tr><td><span class='breakWord' style='width:100px;'>" + utilities.EscapeHTML(videoie.SourceLink) + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>FileName:</span>";
+		outputStr+="<tr><td><span class='breakWord' style='width:100px;'>" + utilities.EscapeHTML(videoie.URL) + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>Height:</span>";
+		outputStr+="<tr><td><span class='breakWord' style='width:100px;'>" + videoie.ImageSourceHeight + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>Width:</span>";
+		outputStr+="<tr><td><span class='breakWord' style='width:100px;'>" + videoie.ImageSourceWidth + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>CodecCount:</span>";
+		outputStr+="<tr><td><span class='breakWord' style='width:100px;'>" + videoie.CodecCount + "</span>";
+
+		for(i=0; i <= videoie.CodecCount; i++)
+		{
+			outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>Codec " + i +" Description</span>";
+			outputStr+="<tr><td><span class='breakWord' style='width:100%;'>" + utilities.EscapeHTML(videoie.GetCodecDescription(i)) + "</span>";	
+		}
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>ActualFrameRate:</span>";
+		outputStr+="<tr><td><span id=ActualFrameRate class='breakWord' style='width:100px;'>" + videoie.ActualFrameRate + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>FrameRate:</span>";
+		outputStr+="<tr><td><span id=FrameRate class='breakWord' style='width:100px;'>" + videoie.FrameRate + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>FrameDropped:</span>";
+		outputStr+="<tr><td><span id=FrameDropped class='breakWord' style='width:100px;'>" + videoie.FrameDropped + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>MemoryUsed:</span>";
+		outputStr+="<tr><td><span id=MemoryUsed class='breakWord' style='width:100px;'>" + videoie.MemoryUsed + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>AvailableMemory:</span>";
+		outputStr+="<tr><td><span id=AvailableMemory class='breakWord' style='width:100px;'>" + videoie.AvailableMemory + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>ReceivedPackets:</span>";
+		outputStr+="<tr><td><span id=ReceivedPackets class='breakWord' style='width:100px;'>" + videoie.ReceivedPackets + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>RecoveredPackets:</span>";
+		outputStr+="<tr><td><span id=RecoveredPackets class='breakWord' style='width:100px;'>" + videoie.RecoveredPackets + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>LostPackets:</span>";
+		outputStr+="<tr><td><span id=LostPackets class='breakWord' style='width:100px;'>" + videoie.LostPackets + "</span>";
+
+		outputStr+="<tr><td style='padding-top:6px;'><span style='font-weight:bold; color:#AFC0CC'>ReceptionQuality:</span>";
+		outputStr+="<tr><td><span id=ReceptionQuality class='breakWord' style='width:100px;'>" + videoie.ReceptionQuality + "</span>";
+	}
+		
+	outputStr+="</table>"	
+
+	infoDiv.innerHTML = outputStr;
+
+	// Adjust span widths
+	var	width = infoTable.clientWidth;
+	var spans = infoTable.all.tags("span");
+	var i;
+	for (i = 0; i < spans.length; i++) {
+		spans[i].style.pixelWidth = width;
+	}
+
+	infoDivScroller.MyDoScroll("scrollToStart");
+}
+
+function IsMSNRadioNoIFrame()
+{
+	var entryNum = videoie.GetCurrentEntry();
+	var url = videoie.GetMediaParameter(entryNum, 'IFrameContent');
+
+	if (url && url.toLowerCase().indexOf('shownoiframe') == 0)
+		return true;
+	else
+		return false;
+
+}
+
+function CanSkipClip()
+{
+	var entryNum = videoie.GetCurrentEntry();
+	var value = videoie.GetMediaParameter(entryNum, 'clientskip');
+	if (value && value.toLowerCase().indexOf('no') == 0)
+		return false;
+	else
+		return true;		
+}
+
+function ReadyStateChange(lReadyState)
+{	
+	TVShell.Message("ReadyStateChange = "+lReadyState);
+//	TVShell.Message("videoie Bandwidth = "+videoie.Bandwidth);
+	globalReadyState = lReadyState;
+
+	if (lReadyState >= MpReadyStateLoading && lReadyState <= MpReadyStateInteractive) {
+		playState.innerText="Connecting";
+		playStateFullScreen.innerText="Connecting";
+		playStateMSNRadio.innerText="Connecting";
+		if (videoie.MediaPlayerType == MpHelixMediaPlayer) {
+			HelixStartupImg.style.display = "inline";
+			defaultImg.style.display = "none";
+			openingImg.style.display = "none";
+		} else {
+			defaultImg.style.display = "inline";
+			openingImg.style.display = "inline";
+			HelixStartupImg.style.display = "none";
+		}
+		ShowAudioVisualization(false);
+	} else if (lReadyState == MpReadyStateComplete) {
+		b_LoadingURL = false;
+		openingImg.style.display = "none";
+		if (videoie.CanScan == true || videoie.CanSeek == true) {
+			if (nowplayingMSNRadio.style.visibility == "hidden" && !IsMSNRadioNoIFrame()) {
+				RewButton.style.src = "url(Assets/PanelPlayerControlREW.png)";
+				RewButton.style.visibility = "visible";
+				Rewind.tabIndex = 0;
+				FFButton.style.visibility = "visible";
+				Forward.tabIndex= 0;
+			}
+		}
+		setTimeout("CheckBandwidthWarning()", 1);
+	}
+}
+
+function CheckBandwidthWarning()
+{
+	// fixme -- needs to understand Helix as well
+	TVShell.Message("Bandwidth = "+videoie.Bandwidth);
+	if ( !IsHighSpeed() && !IsClientASXFile(videoie.URL) && (!IsLocalFile(videoie.URL) ||
+		(IsLocalFile(videoie.URL) && IsWmpPlayListFile(videoie.URL))) && videoie.Bandwidth > 60*1000) {
+		stop_video();
+		if (TVShell.IsOn) {
+			var errorDesc = "Since you are connected to the Internet over a phone line, audio/video files like this one will play better if you choose a link with a lower connection speed, such as 56k.<p>"
+					 +  "To return to the Web page and choose a lower connection speed, choose <EM>Go Back</EM>. To continue playing this file at " + Math.round((videoie.Bandwidth/1000)) + "k, choose <EM>Keep Playing</EM>.";
+			var result =  PanelManagerObj.CustomMessageBox(errorDesc,"", "Go Back;Keep Playing", 0,"");
+			if (!result)
+				PanelManagerObj.Hide('mediapanel');
+			else
+				play_video();
+		}
+	}
+}
+var currentPlayState = 0;
+function PlayStateChange(oldState,newState)
+{
+	TVShell.Message("Playstatechange old=" + oldState + " new= " + newState);
+//	TVShell.Message("D = " + videoie.Duration + " %60 = " + videoie.Duration%60 + "round=" + Math.floor(videoie.Duration%60) + " Max= " + Math.max(Math.floor(videoie.Duration%60),0) );   
+//	TVShell.Message("2 videoie Bandwidth = "+videoie.Bandwidth);
+
+	if (newState != MpStopped || videoie.HasMultipleItems) {
+		// When transitioning to Stopped, we might pick up info from previous file.
+		if (nowplayingMSNRadio.style.visibility == "hidden")
+			ShowInfo();
+	}
+
+	currentPlayState = newState;
+	if (nowplayingMSNRadio.style.visibility == "hidden") {
+		if (newState == MpStopped) 
+		{
+			flash.style.visibility = "visible";
+			ShowAudioVisualization(false);
+		}
+		else if (newState==MpPlaying)
+		{
+			TVShell.Message("media: playing state displaysize = " + videoie.DisplaySize);
+
+			HelixStartupImg.style.display = "none";
+			openingImg.style.display = "none";
+			if (HasVideo()) {
+				flash.style.visibility = "hidden";
+				if (!IsVideoFitInWindow())
+				{
+					defaultImg.src = "msntv:/Images/1x1.gif";
+				}
+			}	
+			else {
+				ShowAudioVisualization(true);
+			}
+		}
+	}
+	ShowPlayState(newState);
+	if (newState == MpStopped) {
+		if (MediaManagerObj.Count == 0) {
+			setTimeout("videoie.DisconnectShim();ResetButtons();", 1);
+		} else if (PanelManagerObj.FocusedPanel.Name != 'mediapanel' && TVShell.IsOn) {
+			setTimeout("ReleaseMediaControl()", 1);
+		}
+	}
+}
+
+function PositionChange(dblOldPosition, dblNewPosition)
+{
+	TVShell.Message("PositionChange dblOldPosition="+dblOldPosition+" dblNewPosition="+dblNewPosition);
+}
+
+var errorDesc;
+var ECStr;
+
+function HandleError()
+{
+	if (!videoie.HasError)
+		return;
+	b_LoadingURL = false;
+	
+	var playerName;
+	var errorCode = videoie.ErrorInternalCode;
+
+	ECStr = "0x";
+	for (var i=28 ; i>=0; i-=4) {
+		ECStr += ((errorCode >> i) & 0xf).toString(16).toUpperCase();	
+	}
+	TVShell.Message("MediaPlayer: playback error.  ErrorCode = " + ECStr + "\n    Desc: " + videoie.ErrorDescription);
+
+	if (videoie.MediaPlayerType == MpWindowsMediaPlayer)
+		playerName = "Windows Media Player";
+	else
+		playerName = "Helix Player";
+
+	if (videoie.ErrorType == MpErrorTypeUnsupportedFormat)
+		errorDesc = "The " + playerName + " cannot play the file you have chosen. The file may be in a format the Player doesn't support.";
+	else if (videoie.ErrorType == MpErrorConnectionError)
+		errorDesc = "The " + playerName + " cannot play the file you have chosen. There may be a problem in the server or network connection.";
+	else
+		errorDesc = "Due to a technical problem, the " + playerName + " cannot play the file you have chosen. Please try again later.";
+
+	if (TVShell.IsOn)
+		setTimeout("delayedMsgBox()", 1);
+}
+
+// By delaying the Dialog box, the Helix dll's threads are able
+// clean up its internal state while the dialog is being displayed
+function delayedMsgBox()
+{
+	PanelManagerObj.CustomMessageBox(errorDesc, "", "OK", 0, ECStr);
+	var currentEntryNumber = videoie.GetCurrentEntry();
+	var totalEntryCount = videoie.EntryCount;
+	if (currentEntryNumber <= 0 || totalEntryCount <= 0 || currentEntryNumber == totalEntryCount)
+		show_DefaultScreen();
+}
+
+function show_DefaultScreen()
+{
+	if (nowplayingMSNRadio.style.visibility == "visible" ||	nowplayingFullscreen.style.visibility == "visible") {
+		var statusTop = safeBottom;
+		var statusHeight = 36;
+		var	statuspanel = PanelManagerObj.Item("statusbar");
+
+		globalScreenState = MpNormalScreen;
+		nowplayingFullscreen.style.visibility = "hidden";
+		nowplayingMSNRadio.style.visibility = "hidden";
+		document.all.msnRadio.src = "";
+		videoie.SetWindowRect(15, 15, 320, 240);
+		if (statuspanel) {
+			mediapanel.ZOrder = statuspanel.ZOrder - 5;
+			statusTop -= statusHeight;
+		}
+		mediapanel.EndRect(safeLeft, statusTop - 340, safeWidth, 340);
+	
+		clearTimeout(ControlPanelTimeoutID);
+	}
+	NoMedia.style.visibility = "visible";
+
+	FullScreenButton.style.visibility = "hidden";
+	HideButton.style.visibility = "hidden";
+
+	Buttons.style.visibility = "hidden";
+
+	flash.style.visibility = "visible";
+	defaultImg.style.display = "inline";
+	defaultImg.src = "Assets/PanelPlayerDefaultScreen.jpg";
+	openingImg.style.display = "none";
+	HelixStartupImg.style.display = "none";
+	ShowAudioVisualization(false);
+
+	buffering.style.visibility = "hidden";
+	playState.style.visibility = "hidden";
+
+	GoToMSNRadio.focus();
+}
+
+function ClearBufferingInfo()
+{
+//	TVShell.Message("media: ClearBufferingInfo " + videoie.AllowScan + " " + videoie.AutoRewind + videoie.TransparentAtStart + videoie.CurrentPosition);
+	clearTimeout(bufferingTimeoutID);	
+	clearTimeout(positionTimeoutID);
+	bufferingState = false;
+
+	if (videoie.CurrentPosition > 0)
+		videoie.CurrentPosition = 0;
+
+    positionTime.innerText = "00:00";
+	playState.innerText = "";
+	progress.percentComplete = 0;
+	PutDefaultFocus();
+}
+
+function NewStream()
+{
+	TVShell.Message("media: NewStream  state=" + videoie.PlayState);
+//	TVShell.Message("3 videoie Bandwidth = "+videoie.Bandwidth);
+	if (playState.innerText == "Rewinding") {
+		playState.innerText="";
+		playStateFullScreen.innerText="";
+		playStateMSNRadio.innerText="";
+	}
+	PutDefaultFocus();
+    positionTime.innerText="00:00";
+	//TVShell.Message("D = " + videoie.Duration + " %60 = " + videoie.Duration%60 + "round=" + Math.floor(videoie.Duration%60) + " Max= " + Math.max(Math.floor(videoie.Duration%60),0) + " for=" + sec );   
+	if (videoie.IsDurationValid) {
+		var min=formatTime(Math.max(Math.floor(videoie.Duration/60),0));
+		var sec=formatTime(Math.max(Math.floor(videoie.Duration%60),0));
+		totalTime.innerText=min+":"+sec;
+	} else if (videoie.IsBroadcast) {
+		totalTime.innerText = "Live";
+		PlayButton.style.visibility="visible";
+		StopButton.style.visibility="hidden";
+		Stop.removeAttribute('tabIndex');
+		PauseButton.style.visibility="hidden";
+		LiveMediaStopButton.style.visibility="visible";
+	} else
+		totalTime.innerText = "    ";
+			
+ 	progress.percentComplete = 0;
+	clearTimeout(positionTimeoutID);
+    positionTimeoutID = setInterval("UpdatePositionTime()", positionTimeout);
+	
+	if (IsASXFileFromMSNRadioService() && !IsMSNRadioNoIFrame()) {	
+		show_MSNRadioService();
+	}	
+	else {
+		if (!IsASXFileFromMSNRadioService()) {
+			show_normalscreen();
+		}
+		else if (IsMSNRadioNoIFrame()) {
+			show_normalscreen();
+			FullScreenButton.style.visibility = "hidden";
+			HideButton.style.visibility = "visible";
+		}
+
+		if (!HasVideo() && mediapanel.State <= PanelState_Rising) {
+			flash.style.visibility = "visible";
+			ShowAudioVisualization(true);
+		}
+		else {
+			ShowAudioVisualization(false);
+		}
+		ShowInfo();
+	}
+}
+
+function EndOfStream(lResult)
+{
+	TVShell.Message("media: EndOfStream  state=" + videoie.PlayState);
+
+
+//	if (nowplayingMSNRadio.style.visibility == "visible") {
+		var lastEntryNum = videoie.EntryCount;
+		if (lastEntryNum > 0)
+		{
+			var url = videoie.GetMediaParameter(lastEntryNum, 'NextAsxFile');
+			if (url)
+			{
+				globalDownloadURL = url;
+				setTimeout("PanelManagerObj.StartDownload(globalDownloadURL);", 1);
+				return;
+			}
+		}
+//	}
+
+	//TVShell.Message("D = " + videoie.Duration + " %60 = " + videoie.Duration%60 + "round=" + Math.floor(videoie.Duration%60) + " Max= " + Math.max(Math.floor(videoie.Duration%60),0) );   
+	ClearBufferingInfo();
+
+	if (nowplayingNormal.style.visibility == "hidden" &&
+		nowplayingFullscreen.style.visibility == "visible" &&
+		nowplayingMSNRadio.style.visibility == "hidden")
+	{
+		clearTimeout(ControlPanelTimeoutID);
+		if (ControlPanel.style.visibility == "hidden")
+		{
+			ShowControlPanel();
+			PutDefaultFocus();
+		}
+	}
+}
+
+function Disconnect(lResult)
+{
+	TVShell.Message("media: Disconnect");
+}
+
+function ResetButtons()
+{	
+	vid.style.visibility = "visible";
+	Buttons.style.visibility = "visible";
+	buffering.style.visibility = "visible";
+	NoMedia.style.visibility = "hidden";
+	nowplayingMSNRadio.style.visibility = "hidden";
+	playState.style.visibility = "visible";
+	playStateMSNRadio.style.visibility = "hidden";
+
+	RewButton.style.visibility = "hidden";
+	FFButton.style.visibility = "hidden";
+	Rewind.removeAttribute('tabIndex');
+	Forward.removeAttribute('tabIndex');
+
+	if (IsHighSpeed()) {
+		FullScreenButton.style.visibility = "visible";
+		HideButton.style.visibility = "visible";
+	}
+	else {
+		FullScreenButton.style.visibility = "hidden";
+		HideButton.style.visibility = "hidden";
+	}
+}
+
+function PopUpMediaPanel()
+{
+	TVShell.Message("media: PopUpMediaPanel");
+
+	hasURL = true;
+
+	ClearAll();
+	globalReadyState = MpReadyStateUninitialized;
+	show_normalscreen();
+	ResetButtons();
+
+	PanelManagerObj.Show('mediapanel');
+}
+function ReplaceBackSlashWithSlash(text)
+{
+	return text.replace(/\\/gi, "/");
+}
+function IsClientASXFile(URL)
+{
+	if (ReplaceBackSlashWithSlash(URL.toLowerCase()) == ReplaceBackSlashWithSlash(tempPlaylistUrl.toLowerCase()))
+		return true;
+	else 
+		return false;
+}
+
+function IsHighSpeed()
+{
+	if (IsUserAuthorized()) {
+		return (TVShell.ConnectionManager.WANAdapter.RXSpeed >= 100000);
+	}
+	else {
+		return true; //(TVShell.ConnectionManager.LANAdapter.RXSpeed >= 100000);
+	}
+}
+
+function IsLocalFile(URL)
+{
+	var url = URL.toLowerCase();
+	if (url.substr(0,5) == "file:" || url.substr(0,6) == "msntv:")
+		return true;
+	else 
+		return false;
+}
+function IsWmpStreamFile(URL)
+{
+	var url = URL.toLowerCase();
+	var arrayLength = WmpStreamFileProtocols.length;
+	for (var i=0; i < arrayLength; i++) {
+		if (url.indexOf(WmpStreamFileProtocols[i]) == 0)
+			return true;
+	}
+	var urlLength = url.length;
+	arrayLength = WmpStreamFileExtensions.length;
+	for (var i=0; i < arrayLength; i++) {
+		if (url.substr(urlLength - WmpStreamFileExtensions[i].length, urlLength) == WmpStreamFileExtensions[i] && url.indexOf('?') <= 0)
+			return true;
+//		var tag = WmpStreamFileExtensions[i]+'?'; // CE cannot handle http://***.wmv?*** 
+//		if (url.indexOf(tag) > 0)
+//			return true;
+	}
+	return false;	
+}
+function IsWmpMediumFile(URL)
+{
+	var url = URL.toLowerCase();
+	var urlLength = url.length;
+	var arrayLength = WmpMediumFileExtensions.length;
+	for (var i=0; i < arrayLength; i++) {
+		if (url.substr(urlLength - WmpMediumFileExtensions[i].length, urlLength) == WmpMediumFileExtensions[i] && url.indexOf('?') <= 0)
+			return true;
+		var tag = WmpMediumFileExtensions[i]+'?';
+		if (url.indexOf(tag) > 0)
+			return true;
+	}
+	return false;	
+}
+function IsWmpPlayListFile(URL)
+{
+	var url = URL.toLowerCase();
+	var urlLength = url.length;
+	var arrayLength = WmpPlayListFileExtensions.length;
+	for (var i=0; i < arrayLength; i++) {
+		if (url.substr(urlLength - WmpPlayListFileExtensions[i].length, urlLength) == WmpPlayListFileExtensions[i] && url.indexOf('?') <= 0)
+			return true;
+		var tag = WmpPlayListFileExtensions[i]+'?';
+		if (url.indexOf(tag) > 0)
+			return true;
+	}
+	return false;	
+}
+function IsWmpCacheNeeded(URL)
+{
+	var url = URL.toLowerCase();
+	var urlLength = url.length;
+	var arrayLength = WmpCacheFileExtensions.length;
+	for (var i=0; i < arrayLength; i++) {
+		if (url.substr(urlLength - WmpCacheFileExtensions[i].length, urlLength) == WmpCacheFileExtensions[i] && url.indexOf('?') <= 0)
+			return true;
+		var tag = WmpCacheFileExtensions[i]+'?';
+		if (url.indexOf(tag) > 0)
+			return true;
+	}
+	var url = URL.toLowerCase();
+	for (var i=0; i < WmpStreamFileProtocols.length; i++) {
+		if (url.indexOf(WmpStreamFileProtocols[i]) == 0)
+			return false;
+	}
+	arrayLength = WmpStreamFileExtensions.length;
+	for (var i=0; i < arrayLength; i++) {
+		var tag = WmpStreamFileExtensions[i]+'?'; // CE cannot handle http://***.wmv?*** 
+		if (url.indexOf(tag) > 0)
+			return true;
+	}	
+	return false;	
+}
+function IsASXFileFromMSNRadioService()
+{
+	var entryNum = videoie.GetCurrentEntry( );
+	var url = videoie.GetMediaParameter(entryNum, 'IFrameContent');
+	if (url)
+		return true;
+	return false;
+}
+
+function IsHelixStreamFile(inURL)
+{
+	var inUrlLength = inURL.length;
+	var extLength = HelixStreamFileExtensions.length;
+	for (var i = 0; i < extLength; i++) {
+		if (inURL.substr(inUrlLength - HelixStreamFileExtensions[i].length, inUrlLength) == HelixStreamFileExtensions[i])
+			return true;
+		var tag = HelixStreamFileExtensions[i] + '?';
+		if (inURL.indexOf(tag) > 0)
+			return true;
+	}
+	return false;	
+}
+
+function OnEmbeddedURL(url)
+{
+	TVShell.Message("media: OnEmbeddedURL = " + url);
+
+	if ( IsWmpStreamFile(url) ||
+		 IsHelixStreamFile(url) ||
+		 (IsWmpMediumFile(url) && ((IsHighSpeed() && !IsWmpCacheNeeded(url)) || IsLocalFile(url))) ) {
+		globalMediumURL = url;
+		setTimeout("PopUpMediaPanel();SetGlobalMediumURL();", 1);
+	} else {
+		globalDownloadURL = url;
+		setTimeout("PanelManagerObj.StartDownload(globalDownloadURL);", 1);
+	}
+}
+
+function OnMediumURL(name, appName, url)
+{
+	if (name != 'mediapanel')
+		return;
+
+	TVShell.Message("media: OnMediumURL = " + url + "  appName = " + appName);
+	
+	var validMediumUrl = false;
+	if (appName == 'ceplayer.exe') {
+/*		if (url.toLowerCase().substr(0,7) == "rtsp://") {
+			// The rtsp protocol is valid for WMP but it is not supported
+			// by our version of WMP.  The error number is arbitrary.
+			if (TVShell.IsOn) {
+				var errorDesc = "This web site is not able to communicate with this media player.";
+				PanelManagerObj.CustomMessageBox(errorDesc, "", "OK", 0, "0x80071234");
+				var currentEntryNumber = videoie.GetCurrentEntry();
+				var totalEntryCount = videoie.EntryCount;
+				if (currentEntryNumber <= 0 || totalEntryCount <= 0 || currentEntryNumber == totalEntryCount)
+					show_DefaultScreen();
+			}
+			return;
+		} else 
+*/		// rtsp:// will always be recognized as Helix player in BeforeNavigation2() of Webbrowser.cpp
+
+		if (IsWmpStreamFile(url) ||
+			(IsWmpMediumFile(url) && ((IsHighSpeed() && !IsWmpCacheNeeded(url)) || IsLocalFile(url)))) {
+			validMediumUrl = true;
+			if (mediaplayer != null && videoie.MediaPlayerType != MpWindowsMediaPlayer) {
+				videoie.DisconnectShim();
+				MediaManagerObj.RemoveMedia(mediaplayer);
+				mediaplayer = null;
+			}
+			if (MediaManagerObj.Count == 0) {
+				mediaplayer = new ActiveXObject("MSNTV.WMPShim");
+				MediaManagerObj.AddMedia(mediaplayer);
+			}
+		}
+	} /* else if (appName == 'helixplayer.exe') {
+		if (IsHelixStreamFile(url) || IsHighSpeed() || IsLocalFile(url)) {
+			validMediumUrl = true;
+			if (mediaplayer != null && videoie.MediaPlayerType != MpHelixMediaPlayer) {
+				videoie.DisconnectShim();
+				MediaManagerObj.RemoveMedia(mediaplayer);
+				mediaplayer = null;
+			}
+			if (MediaManagerObj.Count == 0) {
+				mediaplayer = new ActiveXObject("MSNTV.HelixShim");
+				MediaManagerObj.AddMedia(mediaplayer);
+			}
+		}
+	}*/ else {
+		TVShell.Message("media: Unsupported media player!  Player name = " + appName);
+		if (TVShell.IsOn) {
+			var errorDesc = "This web site is not able to communicate with this media player.";
+			PanelManagerObj.CustomMessageBox(errorDesc, "", "OK", 0, "0x80071235");
+			var currentEntryNumber = videoie.GetCurrentEntry();
+			var totalEntryCount = videoie.EntryCount;
+			if (currentEntryNumber <= 0 || totalEntryCount <= 0 || currentEntryNumber == totalEntryCount)
+				show_DefaultScreen();
+		}
+		return;
+	}
+	
+	TVShell.Message("media: setting globalURL to " + url);
+	if (validMediumUrl) {
+		globalMediumURL = url;
+		setTimeout("PopUpMediaPanel();SetGlobalMediumURL();", 1);
+	} else {
+		globalDownloadURL = url;
+		setTimeout("PanelManagerObj.StartDownload(globalDownloadURL);", 1);
+	}
+}
+
+function SetGlobalMediumURL()
+{
+	TVShell.Message("media: mediamanager count = "+ MediaManagerObj.Count);
+	if (b_LoadingURL)
+		videoie.Cancel();
+	videoie.URL = globalMediumURL;
+	videoie.AutoStart = true;
+	b_LoadingURL = true;
+}
+
+function OnPanelPopup()
+{
+	PanelManagerObj.Show('mediapanel');
+}
+function OnMemoryStateChange(newState)
+{
+	// 3 - out of memory
+	if (newState == 3 && globalReadyState > MpReadyStateUninitialized) {
+		if (globalReadyState == MpReadyStateComplete) {
+			if (videoie.PlayState != MpStopped)
+				stop_video();
+		} else {
+			ReleaseMediaControl();
+		}
+	}
+}
+
+function OnServiceListKeyDown(ServiceEntry)
+{
+	if (PanelManager.FocusedPanel.Name == "mediapanel") {
+		var alertPanel = PanelManager.Item("alert");						
+		if (alertPanel && alertPanel.State == 0)
+			return;
+
+		if (ServiceEntry.name == "browser::back") {
+			if (nowplayingFullscreen.style.visibility == "visible") {
+				show_normalscreen();
+			}
+			else {
+				PanelManagerObj.Hide('mediapanel');
+			}
+		}
+		else if (ServiceEntry.name == "browser::esc") {
+			if (nowplayingFullscreen.style.visibility == "visible")	{
+				if (ControlPanel.style.visibility != "visible")	{
+					ShowControlPanel();
+					PutDefaultFocus();
+					clearTimeout(ControlPanelTimeoutID);
+					ControlPanelTimeoutID = setTimeout(HideControlPanel, ControlPanelTimeout);
+				}
+				else { 
+					HideControlPanel();
+				}
+			} 
+			else {
+				PanelManagerObj.Hide('mediapanel');
+			}
+		}
+	}
+}
+
+function ShowMainPanelWithURL(URL)
+{
+	PanelManagerObj.Show('main');
+	PanelManagerObj.Item('main').GotoURL(URL);
+}
+
+function IsMainPanelOnLoginPage()
+{
+	var mainPanel = PanelManager.Item("main");
+	if (mainPanel) {
+		var url = mainPanel.URL.toLowerCase();	
+		if (url.indexOf("msntv:/tvshell/login.html") == 0)
+			return true;
+	}
+	return false;
+}
+
+function ConfirmSignOn(serviceName)
+{
+	var CurrentUser = TVShell.UserManager.CurrentUser;
+
+	if(!IsUserAuthorized())
+	{
+		var msgTxt = "You are currently not signed in. Do you want to exit the Media Player and sign in, or return to the Media Player?"
+		var result = PanelManager.CustomMessageBox(msgTxt,"","Return to Player;Sign In;",0,"", true, 0x30, 1);
+		if (result == 1) {
+			OnHide();
+			if (!IsMainPanelOnLoginPage())
+				GotoSignOn();
+		}
+		return;	
+	}
+	else {
+		var entry = TVShell.ActiveServiceList.Item(serviceName);
+		if (entry && entry.URL) {
+			ShowMainPanelWithURL(entry.URL);
+		}
+	}
+}
+
+function OnHide()
+{	
+	PanelManagerObj.Hide(window.name);
+}
+
+function OnDone()
+{	
+	if (!videoie.HasError) {
+   		stop_video();
+	}
+	PanelManagerObj.Hide(window.name);
+}
+
+function OnLoad()
+{
+	b_globalMediaLoaded = true;
+	videoie.AutoRewind = false; 
+	PutDefaultFocus();
+	ShowInfo();
+}
+
+function OnUnload()
+{
+	stop_video();
+	b_globalMediaLoaded = false;
+	if (mediaplayer != null) {
+		MediaManagerObj.RemoveMedia(mediaplayer);
+		mediaplayer = null;
+	}
+}
+
+function OnKeydown()
+{
+	if (TVShell.SystemInfo.Flavor != "release" && TVShell.SystemInfo.Flavor != "ppe" && event.altKey && event.keyCode == "1".charCodeAt(0)) {
+		event.returnValue = false;
+		showDetailsForQA = showDetailsForQA ? false : true;
+		ShowInfo();
+	}
+	
+	if (IsHighSpeed() && event.altKey && (event.keyCode == 70|| event.keyCode == 102)) {
+		if (nowplayingNormal.style.visibility == "visible")
+			show_fullscreen();
+		else
+			show_normalscreen();
+		return;
+	}
+
+	if (nowplayingFullscreen.style.visibility == "visible" &&
+		ControlPanel.style.visibility != "visible" &&
+		IsNormalKey(event.keyCode)) {
+
+		ShowControlPanel();
+		PutDefaultFocus();
+		clearTimeout(ControlPanelTimeoutID);
+		ControlPanelTimeoutID = setTimeout(HideControlPanel, ControlPanelTimeout);
+	}
+}
+
+function IsNormalKey(keyCode)
+{
+	if ((keyCode >= 48 && keyCode <= 57) || (keyCode >= 65 && keyCode <= 90) ||
+		(keyCode >= 97 && keyCode <= 122) || (keyCode >= 37 && keyCode <= 40) ||
+		 keyCode == 32 || keyCode == 27)
+	{
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+function HideControlPanel()
+{
+	videoie.SetWindowRect(0, 0, safeWidth, safeHeight);
+	ControlPanel.style.visibility = "hidden";
+	Buttons.style.visibility = "hidden";
+}
+
+function ShowControlPanel()
+{
+	videoie.SetWindowRect(0, 0, safeWidth, safeHeight - 62);
+	ControlPanel.style.visibility = "visible";
+	Buttons.style.visibility = "visible";
+}
+
+function ShowAudioVisualization(show)
+{
+	var		html = "";
+	if (show) {
+		html =
+			"<object classid=\"clsid:d27cdb6e-ae6d-11cf-96b8-444553540000\" tabindex=\"-10001\" width=\"320\" height=\"240\">" + 
+				"<param name=\"movie\" value=\"file:/web/media/assets/PanelPlayerVisualization.swf\" />" +
+				"<param name=\"quality\" value=\"high\" />" +
+				"<param name=\"bgcolor\" value=\"#000000\" />" +
+			"</object>";
+		openingImg.style.display = "none";
+
+	}
+	audioVisualization.innerHTML = html;
+}
+
+function OnMediaAdd(pMedia)
+{
+	if (mediaplayer != null && mediaplayer != pMedia) {
+		MediaManagerObj.RemoveMedia(mediaplayer);
+		mediaplayer = null;
+	}
+	if (MediaManagerObj.Count == 1) {
+		videoie.DisconnectShim();
+		ClearAll();
+		ResetButtons();
+	}
+	videoie.OnMediaAdd(pMedia);
+}
+
+function OnMediaRemove(pMedia)
+{
+	videoie.OnMediaRemove(pMedia);
+	if (MediaManagerObj.Count == 1 && videoie.PlayState == MpStopped) {
+		ResetButtons();
+	}
+}
+	
+function OnWANStateChange(ConnectCause, newState, newProgress)
+{
+//	TVShell.Message("WANStateChange("+ConnectCause+", "+newState+", "+newProgress+")");
+	switch (newState) {
+		case ConnectState_Disconnected:
+		case ConnectState_Disconnecting:
+			if (!videoie.HasError) {
+   				stop_video();
+			}
+			break;
+		case ConnectState_Connecting:
+			break;
+		case ConnectState_Connected:
+			break;
+	}
+}
+
+function OnServiceStateChange(NewState, OldState)
+{
+	if (NewState == Service_ReSignIn && OldState == Service_Authorized) {
+		stop_video();
+		hasURL = false;
+	}
+}
+
+Sink.AttachEvent(PanelManagerObj, "OnMediumURL", OnMediumURL);
+Sink.AttachEvent(PanelManagerObj, "OnBeforeShow", OnBeforeShow);
+Sink.AttachEvent(PanelManagerObj, "OnAfterShow", OnAfterShow);
+Sink.AttachEvent(PanelManagerObj, "OnBeforeFirstShow", OnBeforeFirstShow);
+Sink.AttachEvent(PanelManagerObj, "OnBeforeHide", OnBeforeHide);
+Sink.AttachEvent(PanelManagerObj, "OnAfterHide", OnAfterHide);
+Sink.AttachEvent(MediaManagerObj, "OnMediaAdd", OnMediaAdd);
+Sink.AttachEvent(MediaManagerObj, "OnMediaRemove", OnMediaRemove);
+Sink.AttachEvent(TVShell, "OnMemoryStateChange", OnMemoryStateChange);
+Sink.AttachEvent(TVShell, "OnServiceListKeyDown", OnServiceListKeyDown);
+Sink.AttachEvent(TVShell.ConnectionManager, "OnWANStateChange", OnWANStateChange);
+Sink.AttachEvent(TVShell.ConnectionManager, "OnServiceStateChange", OnServiceStateChange);	
+
+</script>
+
+</head>
+<body style="margin:0px; behavior:url(../HTC/WMPPanelBG.htc);"
+	onLoad="OnLoad();" onUnload="OnUnload();" onkeydown="OnKeydown();">
+
+<div id="nowplayingNormal">
+	<table style="width:100%; height:100%;" cellspacing="0" cellpadding="0">
+		<tr>
+			<td style="background-color:black;">
+				<table style="width:100%; height:100%;" cellspacing="0" cellpadding="0">
+					<tr>
+						<td style="width:320px;"></td>
+						<td>
+							<div id="infoDivScroller">
+								<div id="infoDiv" style="width:100%;">
+								</div>
+							</div>
+						</td>
+					</tr>
+				</table>
+			</td>
+		</tr>
+		<tr>
+			<td style="height:46px; text-align:right;">
+				<msntv:CustomButton id="FullScreenButton" class="bottombarButton" style="visibility:hidden;" label="Full Screen" onclick="show_fullscreen();" />
+				<msntv:CustomButton id="HideButton" class="bottombarButton" style="visibility:hidden;" label="Hide" onclick="OnHide();" />
+				<msntv:CustomButton id="DoneButton" class="bottombarButton" label="Done" onclick="OnDone();" />
+				<div id="NormalScreenWMPLogo" style="display:inline; margin-left:8px; width:35px; height:44px; behavior:url(#default#alphaImageLoader); src:url(Assets/PanelPlayerLogoWMP.png);"></div>
+				<div id="NormalScreenHelixLogo" style="display:none; margin-left:8px; width:58px; height:44px; behavior:url(#default#alphaImageLoader); src:url(Assets/PanelPlayerLogoHelix.png);"></div>
+			</td>
+		</tr>
+	</table>
+
+	<div id="buffering">
+		<table cellspacing="0" cellpadding="0" style="width:320; height:25;">
+			<tr>
+				<td style="width:5px;"></td>
+				<td id="positionTime" style="width:45px; text-align:right; color:#AFC0CC;"></td>
+				<td style="width:5px;"></td>
+				<td style="width:80px;">
+					<msntv:progressbar id="progress" />
+				</td>
+				<td style="width:5px;"></td>
+				<td id="totalTime" style="width:45px; color:#AFC0CC;"></td>
+				<td style="width:5px;"></td>
+				<td id="playState" style="width:130px; text-align:right; color:#AFC0CC;"></td>
+			</tr>
+			</table>
+	</div>
+
+	<div id="vid">
+		<object id="videoie" TABINDEX="-1" classid="CLSID:B945EB84-7BCA-48FE-A0A2-25B4DE077A02" VIEWASTEXT></object>
+	</div >
+
+	<div id="NoMedia">
+		<span style="display:inline-block; padding-bottom:8px; font-weight:bold; font-size:20px; color:#AFC0CC;">
+			<script>
+				if (TVShell.ConnectionManager.WANProvider == BYOAEthernetProviderName) 
+					document.write("Music and Video");
+				else
+					document.write("Music");
+			</script>
+		</span><br>
+		<span style="font-size:16px;">
+			<script>
+				if (TVShell.ConnectionManager.WANProvider == BYOAEthernetProviderName) 
+					document.write("To use the Windows Media player, choose the link below and select something to watch or listen to.");
+				else
+					document.write("To use the Windows Media player, choose the link below and select something to listen to.");
+			</script>
+		</span>
+
+		<table style="width:100%; margin-top:8px;" cellspacing="0" cellpadding="0">
+			<tr>
+				<td style="width:11px; vertical-align:top; padding-top:1px;">
+					<div style="width:7px; height:14px; behavior:url(#default#alphaImageLoader); src:url(../Images/BulletCustom.png);"></div>
+				</td>
+				<td style="padding-left:5;">
+					<a id="GoToMSNRadio" tabindex=0 style="color:#AFC0CC;"onclick="ConfirmSignOn('home::radioplus');">
+						Radio
+					</a>
+				</td>
+			</tr>
+			<script>
+				if (TVShell.ConnectionManager.WANProvider == BYOAEthernetProviderName) {
+					document.write('\
+						<tr>\
+							<td style="width:11px; vertical-align:top; padding-top:1px;">\
+								<div style="width:7px; height:14px; behavior:url(#default#alphaImageLoader); src:url(../Images/BulletCustom.png);"></div>\
+							</td>\
+							<td style="padding-left:5;">\
+								<a id="GoToMSNVideo" tabindex=0 style="color:#AFC0CC;"onclick="ConfirmSignOn(\'home::videoplus\');">\
+									Video\
+								</a>\
+							</td>\
+						</tr>');
+				}
+			</script>
+		</table>
+	</div>
+
+	<div id="nowplayingMSNRadio">
+		<iframe id="MSNRadioIFrame" name="msnRadio" width=530 height=265 style="background-color:transparent;" frameborder=0 src="msntv:/shell/empty.html"  scrolling=no></iframe>
+	</div>
+
+	<script language=javascript event="ReadyStateChange(lReadyState)" for=videoie>
+		ReadyStateChange(lReadyState);
+	</script>
+	<script language=javascript event="Buffering(bStart)" for=videoie>
+		Buffering(bStart);
+	</script>
+	<script language=javascript event="NewStream()" for=videoie>
+		NewStream();
+	</script>
+	<script language=javascript event="PlayStateChange(oldState,newState)" for=videoie>
+		PlayStateChange(oldState,newState);
+	</script>
+	<script language=javascript event="EndOfStream(lResult)" for=videoie>
+		EndOfStream(lResult);
+	</script>
+	<script language=javascript event="OnEmbeddedURL(url)" for=videoie>
+		OnEmbeddedURL(url);
+	</script>
+	<script language=javascript event="OnPanelPopup()" for=videoie>
+		OnPanelPopup();
+	</script>
+	<script language=javascript event="Error()" for=videoie>
+		HandleError();
+	</script>
+	<script language=javascript event="Disconnect(lResult)" for=videoie>
+		Disconnect(lResult);
+	</script>
+	<script language=javascript event="PositionChange(dblOldPosition, dblNewPosition)" for=videoie>
+		PositionChange(dblOldPosition, dblNewPosition);
+	</script>
+</div>
+
+<div id="nowplayingFullscreen">
+	<div id="ControlPanel" style="position:absolute; visibility:visible; bottom:0px; left:0px; width:100%; height:61px;">
+		<table style="position:absolute; z-index:-1; top:0px; left:0px; width:100%; height:100%;" cellpadding=0 cellspacing=0>
+			<tr>
+				<td style="width:15px;vertical-align:top;"><img src="msntv:/Panels/Images/PanelPlayerSmallLeftSide.jpg"></td>
+				<td style="text-align:center; vertical-align:top; background-image:url(msntv:/Panels/Images/PanelPlayerSmallMiddleStretch.jpg)"><img id="fullScreenImg" src="msntv:/Panels/Images/PanelPlayerSmallBG.jpg"></td>
+				<td style="width:15px;vertical-align:top;"><img src="msntv:/Panels/Images/PanelPlayerSmallRightSide.jpg"></td>
+			</tr>
+		</table>
+		<div style="width:100%; height:100%; padding:8px 15px 7px 15px;">
+			<table cellpadding="0" cellspacing="0" width=100% height="46">
+				<tr>
+					<td style="width:195px;"></td>
+					<td id="playStateFullScreen" style="padding-left:10px; color:#AFC0CC;"></td>
+					<td style="text-align:right;">					
+						<msntv:CustomButton label="Normal View" class="bottombarButton" id="NormalView" onClick="show_normalscreen();" />
+						<div id="FullScreenWMPLogo" style="display:inline; margin-left:8px; width:35px; height:44px; behavior:url(#default#alphaImageLoader); src:url(Assets/PanelPlayerLogoWMP.png);"></div>
+						<div id="FullScreenHelixLogo" style="display:none; margin-left:8px; width:58px; height:44px; behavior:url(#default#alphaImageLoader); src:url(Assets/PanelPlayerLogoHelix.png);"></div>
+					</td>
+				</tr>
+			</table>
+		</div>
+	</div>
+</div>
+
+<div id="flash">
+	<div style="position:absolute; z-index:-1; top:0px; left:0px; width:320px; height:240px;"><img id="defaultImg" src="msntv:/Images/1x1.gif"></div>
+	<table style="width:320; height:240;" cellspacing="0" cellpadding="0">
+		<tr>
+			<td align=center valign=center>
+				<div id="openingImg" style="display:none;"><img src="Assets/PanelPlayerOpening.gif"></div>
+				<div id="HelixStartupImg" style="display:none; width:91px; height:111px; behavior:url(#default#alphaImageLoader); src:url(Assets/PanelPlayerLogoReal.png);"></div>
+				<span id="audioVisualization"></span>
+			</td>
+		</tr>
+	</table>
+</div>
+
+<map name="NavMap">						   
+    <area shape="RECT" coords="  0,6,  39,49" id="Play" tabIndex=0 onClick="play_video()">    
+    <area shape="RECT" coords=" 39,6,  78,49" id="PauseStop" tabIndex=0 onClick="pause_stop_video()">   
+    <area shape="RECT" coords=" 78,6, 117,49" id="Stop" onClick="stop_video()">    
+    <area shape="RECT" coords="117,6, 156,49" id="Rewind" onClick="rew_video()">    
+	<area shape="RECT" coords="156,6, 195,49" id="Forward" onClick="ff_video()">    
+</map>
+
+<div id="Buttons">
+	<img style="vertical-align:top" src="../Images/1x1.gif" useMap="#NavMap" style="width:195; height:46; border:none;">
+	<div id="PlayButton"  style="visibility:visible;  position:absolute; left:0px;   top:0px; behavior:url(#default#alphaImageLoader); src:url(Assets/PanelPlayerControlPlay.png);"></div>
+	<div id="PauseButton" style="visibility:visible; position:absolute; left:39px;   top:0px; behavior:url(#default#alphaImageLoader); src:url(Assets/PanelPlayerControlPause.png);"></div>
+	<div id="LiveMediaStopButton"  style="visibility:hidden; position:absolute; left:39px;  top:0px; behavior:url(#default#alphaImageLoader); src:url(Assets/PanelPlayerControlStop.png);"></div>
+	<div id="StopButton"  style="visibility:visble; position:absolute; left:78px;  top:0px; behavior:url(#default#alphaImageLoader); src:url(Assets/PanelPlayerControlStop.png);"></div>
+	<div id="RewButton"   style="visibility:hidden;  position:absolute; left:117px;  top:0px; behavior:url(#default#alphaImageLoader); src:url(Assets/PanelPlayerControlREW.png);"></div>
+	<div id="FFButton"    style="visibility:hidden;  position:absolute; left:156px; top:0px; behavior:url(#default#alphaImageLoader); src:url(Assets/PanelPlayerControlFF.png);"></div>
+	<div id="playStateMSNRadio" style="visibility:hidden; position:absolute; left:165px; top:10px; font-size:16px; color:#AFC0CC;"></div>
+</div>
+
+</body>
+</html>

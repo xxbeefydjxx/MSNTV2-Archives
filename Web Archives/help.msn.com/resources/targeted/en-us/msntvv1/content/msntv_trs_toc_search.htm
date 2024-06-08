@@ -1,0 +1,29 @@
+<html xmlns:msntv=""><head><meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+	<title>Search help table of contents</title>
+	<!--?IMPORT namespace="msntv" implementation="CustomButton.htc"-->
+	<!--?IMPORT namespace="msntv" implementation="MSNTVPaneHelpHeading.htc"-->
+	<script language="Javascript" src="/ServerPaneHelp.js"></script>
+	<link rel="StyleSheet" type="text/css" href="/MSNTVPaneHelp.css">
+</head>
+
+<body>
+
+<msntv:msntvpanehelpheading label="Help" label2="Search" helpurl="MSNTV_ALTTOC_main.htm" showscrolltop="">
+
+
+<div id="scrollArea">
+
+	<!-- Manage Search -->
+	<a id="sendEmailID" class="SearchID" href="javascript:goToPageAndPassNewOrigin(&#39;MSNTV_PROC_SINGLE_Web_Search.htm&#39;);">Searching for a Web page</a><br>
+        <a id="sendEmailID" class="SearchID" href="javascript:goToPageAndPassNewOrigin(&#39;MSNTV_PROC_SINGLE_Web_SearchResults.htm&#39;);">Search Results page</a><br><br>
+</div>
+
+<div id="sideBar">
+	<!-- Feature menu always returns to the page that called this one: the main table of contents or a feature page -->
+	<msntv:custombutton onclick="javascript:ReturnToReferrer();" class="sideBarButton" id="doneID" label="Done">
+	<script>document.all("doneID").focus();</script>
+</msntv:custombutton></div>
+
+
+
+</msntv:msntvpanehelpheading></body></html>

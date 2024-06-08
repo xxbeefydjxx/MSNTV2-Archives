@@ -1,0 +1,71 @@
+<HTML xmlns:msntv>
+<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../HTC/SettingsHeading.htc">
+<TITLE>Settings</TITLE>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/TVShell.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/ServiceList.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/ConnectionManager.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/SettingsTemplate.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="msntv:/msntv_settings_loc.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="msntv:/msntv_common_loc.js"></SCRIPT>
+
+<LINK REL=StyleSheet TYPE="text/css" HREF="../CSS/Settings.css">
+</HEAD>
+
+<BODY>
+
+<SCRIPT>
+var WANProvider = TVShell.ConnectionManager.WANProvider;
+if (!WANProvider) {
+	SetConnectionType(MSNIAModemProviderName);
+	WANProvider = MSNIAModemProviderName;
+}
+
+function TestLAN()
+{
+	if (BYOAEthernetProviderName == WANProvider) {
+		return GotoLANPage("msntv:/Settings/Network/HomeNetworking.html");
+	} else {
+		document.location = "msntv:/Settings/ConnectionSettings.html?LANSetup=1";
+	}
+}
+</SCRIPT>
+
+
+<SCRIPT>OpenSettingsTable( L_SETTINGS_TITLE , "" , "" );</SCRIPT>
+
+<DIV id=sideBar>
+	<msntv:CustomButton onclick="history.go(-1)" class=sideBarButton id="default"/>
+	<script>document.all("default").label = L_BUTTON_DONE;</script>
+	<script>document.all("default").focus();</script>
+</DIV>
+
+<DIV id=scrollArea>
+<script>	
+	if(TVShell.SystemInfo.MUIEnable==1)
+	{
+		document.write("<A href='LanguageSetting.html' class=topic id=Language>" +
+		L_SETTINGS_LANGUAGE_SUBTITLE + "</A><DIV class=description>" + L_SETTINGS_LANGUAGE_TEXT + "</DIV>");
+	}
+
+		document.write("<A href='ConnectionSettings.html' class=topic>" + 
+		L_SETTINGS_CONNECTION_SUBTITLE + "</A><DIV class=description>" + L_SETTINGS_CONNECTION_TEXT + "</DIV>");
+
+		document.write("<A onClick='TestLAN();' class=topic>" +
+		L_SETTINGS_HOMENETWORK_SUBTITLE + "</A><DIV class=description>" + L_SETTINGS_HOMENETWORK_TEXT + "</DIV>");
+
+		document.write("<A href='NightlyUpdate.html' class=topic>" +
+		L_SETTINGS_AUTOUPDATE_SUBTITLE + "</A><DIV class=description>" + L_SETTINGS_AUTOUPDATE_TEXT + "</DIV>");
+
+		document.write("<A href='TV/SetupInfo.html' class=topic>" +
+		L_SETTINGS_TVSETTINGS_SUBTITLE + "</A><DIV class=description>" + L_SETTINGS_TVSETTINGS_TEXT + "</DIV>");
+	
+		document.write("<A href='WMPVisualization.html' class=topic>" +
+		L_SETTINGS_WMPVISUALIZATION_SUBTITLE + "</A><DIV class=description>" + L_SETTINGS_WMPVISUALIZATION_TEXT + "</DIV>");
+
+</script>
+</DIV>
+
+<SCRIPT>CloseSettingsTable();</SCRIPT>
+
+</BODY>

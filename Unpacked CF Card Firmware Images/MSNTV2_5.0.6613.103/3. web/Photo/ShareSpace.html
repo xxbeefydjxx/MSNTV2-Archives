@@ -1,0 +1,189 @@
+<html xmlns:msntv>
+<?import namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../HTC/PhotoHeading.htc">
+<head>
+	<title>Photo Save Photos</title>	
+	<link rel=StyleSheet type="text/css" href="../css/Photo.css">
+	<link rel=StyleSheet type="text/css" href="../css/Base.css">
+<style>	
+
+		#overview
+		{
+			padding-top: 10px;
+			padding-bottom: 5px;
+		}
+
+		.item
+		{
+			font-family: Segoe TV;
+			font: 18px bold; 
+			color: #1D1D1D;
+		}	
+		.itemDescription
+		{
+			font-family: Segoe TV;
+			font: 18px bold; 
+			color:#444444;
+		}	
+		
+</style>
+
+<script LANGUAGE=Javascript SRC="msntv:/Javascript/TVShell.js"></script>
+<script LANGUAGE=Javascript SRC="msntv:/Javascript/ProgressPanel.js"></script>
+<script LANGUAGE=Javascript SRC="msntv:/Photo/PhotoSOAP.js"></script>
+
+<script>
+	
+	function GetSpacePermission()
+	{
+		if(!OnlineStorageDevice)
+			return;
+			
+		var permission = OnlineStorageDevice.Property("Permission");
+		for(var i = 0; i<2; i++)
+		{
+			spacePermissions[i].checked = (spacePermissions[i].value == permission) ? true : false;
+		}
+	}
+	
+	var permission = "";
+	function SetSpacePermission()
+	{
+		if(gAbort)
+			return;
+					
+		for(var i = 0; i<2; i++)
+		{
+			if(spacePermissions[i].checked)	
+			{
+				permission = spacePermissions[i].value;
+				break;
+			}
+		}
+		
+		if(!permission || permission=="")
+		{
+			HideProgressPanel();
+			alert("Please choose one of the permission settings and select Continue.");
+			return;
+		}		
+		
+		var paramsStr = '<SetPermissionForMySpace xmlns="http://spaces.msn.com/mediacenter"><perm>';
+		paramsStr+=permission;
+		paramsStr+='</perm></SetPermissionForMySpace>';
+		
+		var soapReqBody = CreateSoapRequest(paramsStr);
+		
+		SetProgressPercent(70);			
+		CleanupXMLHTTPRequest();	
+		gXMLHttpRequest = PostSoapAction("POST", gASYNC, gSpacesServer, soapReqBody, HandleSetSpacePermission, "SetPermissionForMySpace");		
+	}
+	
+	function HandleSetSpacePermission(httpRequest)
+	{
+		TVShell.Message("HandleSetSpacePermission");
+		if(gAbort)
+			return;
+			
+		var respNode = null;
+		if ( httpRequest.responseXML)
+			respNode = httpRequest.responseXML.selectSingleNode("//faultstring");
+		if ( respNode)
+		{
+			HideProgressPanel();
+			alert("MSNTV experienced a technical problem while setting permissions for your online storage. Please try again later.");		
+			return;
+		}
+		
+		// successfully set the permission
+		OnlineStorageDevice.Property("Permission") = permission;
+		
+		// go to the online space
+		HideProgressPanel();
+		var msg = "You've successfully set permissions for your online space. ";
+		PanelManager.AnimationMessageBox(msg, "msntv:/Panels/Images/TaskCompleted.gif", "Task_Complete", 2000);	
+		setTimeout(OnShareSpaceComplete, 1000);	
+	}
+	
+	function OnShareSpaceComplete()
+	{
+		PanelManager.Item("main").NoBackToMe=true;
+		var destURL = "msntv:/Photo/PhotoOrganizer.html?state=organize&storage=online";
+		mainPanel.GotoURL(destURL);		
+	}
+
+	function StopProgress()
+	{
+		gAbort = true;
+		HideProgressPanel();
+		CleanupXMLHTTPRequest();
+	}
+	
+	function OnContinue()
+	{
+		gAbort = false;
+		SetProgressStopFunction(StopProgress);		
+		SetProgressText("Setting permissions, please wait ...");
+		ShowProgressPanel();
+		SetProgressPercent(10);
+		
+		// Set permissions
+		SetSpacePermission();
+	}
+	
+	function OnCancel()
+	{
+		history.go(-1);
+	}
+	
+	function OnLoad()
+	{
+		// Get permissions
+		GetSpacePermission();
+	}
+		
+	function OnUnload()
+	{
+		HideProgressPanel();
+		CleanupXMLHTTPRequest();
+	}
+</script>
+</head>
+<body topmargin=0 leftmargin=0 rightmargin=0 bottommargin=0 onload="OnLoad();" onunload="OnUnload();">
+
+		<msntv:PhotoHeading id=Heading label="Share your online MSN Space"/>
+	
+		<DIV id=sideBar>
+			<table cellpadding=0 cellspacing=0 width=100% align=center ID="Table1" >
+				<tr id="ContinueRow" style='display:block;'>
+					<td height=30 ><msntv:CustomButton onclick="OnContinue();" class=sideBarButton id="ContinueButton" label="Continue" /></td>
+				</tr>
+				<tr>
+					<td height=30 ><msntv:CustomButton onclick="OnCancel();" class=sideBarButton id="CancelButton" label="Cancel" /></td>
+				</tr>
+				<tr ><td id=TipCell style='padding:15 5 5 6;  color:#ffffff; font-size:15px; '> 
+						Tip: Please be advised that spaces that do not conform to the code of conduct will be taken down and illegal content reported to authorities.
+ </td>
+	            </tr>
+			</table>			
+		</DIV>
+		
+		<DIV id=scrollArea>		
+			<DIV class=description id=overview>
+				Permissions specify who can view your online MSN space. You can share your space with everyone or only the people you know.
+				
+				<br><br>
+				
+				Choose one of the following permission settings, and then choose <b>Continue</b>.
+				<div style="margin-top:10px;">
+					<INPUT type=radio NAME=spacePermissions id="spacePermissions0" value="Public"> Public -  Everyone on the Internet can see your space. All content posted on a public space must be appropriate for all readers. <br>
+					<INPUT type=radio NAME=spacePermissions id="spacePermissions1" value="Messenger"> Messenger - Only the people on your Messenger Allow list can see your space.<br>
+					<!--
+					<INPUT type=radio NAME=spacePermissions id="spacePermissions2" value="Custom"> Private - Only you can see your space.<br>
+					-->
+				</div>
+					
+			</DIV>
+		</div>
+</body>
+</html>

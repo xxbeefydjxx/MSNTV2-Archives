@@ -1,0 +1,15 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN" >
+<HTML>
+	<HEAD>
+		<TITLE>Bad request</TITLE>
+	</HEAD>
+	<script>
+	function badURL()
+	{
+		window.external.MessageBox("The page cannot be found.", "", "OK", 0, 0x10, 1);
+		history.back();
+	}
+	</script>
+	<BODY onload="badURL();" bgColor="#cfdae5">
+	</BODY>
+</HTML>

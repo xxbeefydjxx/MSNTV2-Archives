@@ -1,0 +1,154 @@
+<HTML xmlns:msntv>
+<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../HTC/SettingsHeading.htc">
+<TITLE>Your ISP settings</TITLE>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/TVShell.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/ServiceList.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/PhoneValidation.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/ConnectionManager.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/parameters.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/SettingsTemplate.js"></SCRIPT>
+
+<SCRIPT>
+	function validatePhoneField(field)
+	{
+		var result;
+
+		result = IsPhoneValid(field, 8, 12);
+		if ( result != "true" )
+        {
+
+	        switch (result)
+	        {
+	            case "empty":
+	            case "tooshort":
+	            case "toolong":
+	                alert('Please type your ISP\'s access phone number(s) like this: 202-555-1212.');
+                    field.focus();
+                    return false;
+	            case "tollfree":
+                    return true;
+	            case "911":
+                    alert('The number you chose is an Emergency Services number. Please type your ISP\'s access phone number(s).');
+                    field.focus();
+                    return false;
+	            case "directoryassistance":
+                    alert('The number you chose is a directory assistance number. Please type your ISP\'s access phone number(s).');
+                    field.focus();
+                    return false;   
+	        }  
+
+        }                                   
+
+		return true;
+	}
+
+	function validatePage()
+	{
+		if (!validatePhoneField(document.all.ISPPhone))
+			return false;
+
+		// the backup ISP number is optional
+		if (document.all.ISPPhone2.value != "") {
+			if (!validatePhoneField(document.all.ISPPhone2))
+				return false;
+		}
+
+		if (document.BYOANBForm.ISPUserName.value == "") {
+			alert('Please enter your ISP user name.');
+			return false;
+		}
+
+		if (document.BYOANBForm.ISPPassword.value == "") {
+			alert('Please enter your ISP password.');
+			return false;
+		}
+
+		return true;
+	}
+
+</SCRIPT>
+
+<LINK REL=StyleSheet TYPE="text/css" HREF="../CSS/Settings.css">
+</HEAD>
+
+<BODY onLoad="onLoadPage();">
+<SCRIPT>OpenSettingsTable( "Settings" , "Your ISP settings" , "" , true);</SCRIPT>
+
+<DIV id=buttonBar>
+	<msntv:CustomButton href="javascript:submitChanges()" class=buttonBarButton id=Done label="Save Changes" />
+	<msntv:CustomButton href="javascript:history.go(-1)" class=buttonBarButton id="default" label="Cancel" />
+</DIV>
+
+<DIV id=nonScrollArea>
+	<DIV class=description>
+	<form name="BYOANBForm">
+		<P>
+		Below is the information for the Internet
+		Service Provider (ISP) you use to connect
+		to <script>document.write( ServiceShortName );</script>. Type any changes you'd like to
+		make in the boxes below, and then choose
+		<EM>Save Changes</EM>.
+		</P>
+		<TABLE class=controlTable>
+		<TR>
+			<TD>Your ISP user name:
+			<TD><input type=text id=ISPUserName class=inputText>
+		</TR>
+		<TR>
+			<TD>Your ISP password:
+			<TD><input type=password class=inputText id=ISPPassword>
+		</TR>
+		<TR>
+			<TD>ISP access phone number:
+			<TD><input type=text id=ISPPhone class=inputText onblur="NormalizePhone(this)">
+		</TR>
+		<TR>
+			<TD>Backup ISP access number:
+			<TD><input type=text id=ISPPhone2 class=inputText onblur="NormalizePhone(this)">
+		</TR>
+		</TABLE>
+		Note: If you have questions about any of this information, contact your ISP.
+	</form>
+	</DIV>
+</DIV>
+<SCRIPT>CloseSettingsTable();</SCRIPT>
+
+</BODY>
+
+<SCRIPT>
+var ConnectionManager = TVShell.ConnectionManager;
+var BYOASettings = ConnectionManager.BYOASettings;
+
+function onLoadPage()
+{
+	document.BYOANBForm.ISPUserName.value = BYOASettings.UserName;
+	document.BYOANBForm.ISPPassword.value = BYOASettings.Password;
+	document.BYOANBForm.ISPPhone.value = BYOASettings.PrimaryNumber;
+	document.BYOANBForm.ISPPhone2.value = BYOASettings.SecondaryNumber;
+	document.BYOANBForm.ISPUserName.focus();
+}
+
+function submitChanges() 
+{
+	if(!validatePage()) {
+		return;
+	}
+	
+	BYOASettings.UserName = document.BYOANBForm.ISPUserName.value;
+	BYOASettings.Password = document.BYOANBForm.ISPPassword.value;
+	BYOASettings.PrimaryNumber = document.BYOANBForm.ISPPhone.value;
+	BYOASettings.SecondaryNumber = document.BYOANBForm.ISPPhone2.value;
+
+	var parameters = FindParameters(TVShell.PanelManager);
+
+	if(parameters["SetConnectionType"]) {
+		SetConnectionType(BYOAModemProviderName);
+		ConnectionManagerSave();
+		history.go(-2);
+	} else {
+		ConnectionManagerSave();
+		history.go(-1);
+	}
+}
+</SCRIPT>

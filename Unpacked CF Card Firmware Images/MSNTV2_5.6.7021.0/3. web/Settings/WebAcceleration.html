@@ -1,0 +1,111 @@
+<HTML xmlns:msntv>
+<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../HTC/SettingsHeading.htc">
+<TITLE>Advanced Dialing</TITLE>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/TVShell.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/SettingsTemplate.js"></SCRIPT>
+<SCRIPT language="Javascript" src="../Javascript/ConnectionManager.js"></SCRIPT>
+<SCRIPT>
+
+
+	function NavigateBack()
+	{
+		history.go(-1);
+	}
+
+	function SaveChanges() 
+	{   
+	
+	    ClearInternetCache();
+		TVShell.ConnectionManager.WebAcceleration = document.all.webaccel.checked;
+		TVShell.ConnectionManager.Save();
+		TVShell.PanelManager.AnimationMessageBox("Your changes have been saved.", "msntv:/Panels/Images/TaskCompleted.gif", "Task_Complete", 2000);
+		g_saved = true;
+		NavigateBack();
+	}
+
+	function ClearInternetCache()
+	{
+	    TVShell.ClearInternetCache("",false); // do not clear cookies
+		TVShell.ClearPersistentInternetCache();
+  
+	}
+
+	function ChangeSetting()
+	{
+		if(document.all.webaccel.checked==true)
+		{
+		 //if user turns it off and then on, set default to excellent. 
+		  TVShell.ConnectionManager.ImageQuality=65;
+		}
+	}
+
+	function OnUnload()
+	{
+	  if(g_saved==false)
+		TVShell.ConnectionManager.ImageQuality=g_OldImageQuality;
+	}
+	function HangUp()
+	{
+	  ClearInternetCache();
+	  TVShell.ConnectionManager.WebAcceleration = document.all.webaccel.checked;
+	  TVShell.ConnectionManager.Save();
+	  TVShell.ConnectionManager.WANDisconnect();
+	  TVShell.PanelManager.AnimationMessageBox("Disconnected and your changes have been saved.", "msntv:/Panels/Images/TaskCompleted.gif", "Task_Complete", 2000);
+	  NavigateBack();	
+	}
+
+	var g_OldImageQuality = TVShell.ConnectionManager.ImageQuality;
+	var g_saved = false;
+
+</SCRIPT>
+
+<LINK REL=StyleSheet TYPE="text/css" HREF="../CSS/Settings.css">
+</HEAD>
+
+<BODY  onunload="OnUnload()">
+
+<SCRIPT>OpenSettingsTable( "Settings" , "Web Accelerator for dial-up" , "" , true);</SCRIPT>
+
+	<DIV id=buttonBar>
+		<msntv:CustomButton onclick="SaveChanges()" class=buttonBarButton id=Done label="Save Changes" />
+		<msntv:CustomButton onclick="history.go(-1)" label="Cancel" id="default" />
+		<msntv:CustomButton id="disconnect" style="display:none" label="Hang Up" onClick="HangUp();" />
+		<script>document.all("Done").focus();</script>
+	</DIV>
+
+	<DIV id=nonScrollArea>
+		<DIV class=description>
+			<P>
+				For dial-up users, Web Accelerator enables faster page downloads but with reduced image quality. 
+			</p>
+			<p>
+			 <em>Note: This option does not affect broadband users.</em> 
+			</P>
+
+			<TABLE  width=100%>
+			<TR>
+				<TD width=5%><INPUT type=checkbox id=webaccel onclick="ChangeSetting()">
+				<TD>Enable Web Accelerator 
+			</TR>
+			<tr id=HelpInfo style="display:none"><td></td><td>(To apply the setting, you need to disconnect and reconnect.)</td>
+			</TABLE>
+			</P>
+		</DIV>
+	</DIV>
+<SCRIPT>
+   CloseSettingsTable();
+   document.all.webaccel.checked = TVShell.ConnectionManager.WebAcceleration
+   if (TVShell.ConnectionManager.WANAdapter.Type == AdapterType_Modem && TVShell.ConnectionManager.WANState == ConnectState_Connected)
+   {
+	   disconnect.style.display = "inline-block";
+	   HelpInfo.style.display = "inline-block";
+   }
+ 
+</SCRIPT>
+	
+
+</BODY>
+
+
+

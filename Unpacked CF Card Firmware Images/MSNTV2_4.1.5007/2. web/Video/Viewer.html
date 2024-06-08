@@ -1,0 +1,203 @@
+<html xmlns:msntv>
+<?import namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?import namespace="msntv" implementation="../HTC/DMRHeading.htc">
+<head>
+	<title>Video Player</title>
+	<link rel=StyleSheet type="text/css" href="../css/Base.css">	
+	<link rel=StyleSheet type="text/css" href="../css/Video.css">
+
+	<script language="Javascript" src="../Javascript/TVShell.js"></script>
+	<script language="javascript" src="../Javascript/ServiceList.js"></script>
+	<script language="javascript" src="../Javascript/VKCodes.js"></script>
+	<script language="Javascript" src="../Javascript/Parameters.js"></script>
+	<script language="Javascript" src="../Javascript/ProgressPanel.js"></script>
+	<script language="javascript" src="../Javascript/DMRCommon.js"></script>
+	<script language="javascript" src="../Javascript/DMRNavigate.js"></script>
+	<script language="Javascript" src="../Javascript/ContentPaneHelp.js"></script>
+	
+	<script>
+		SetProgressStopFunction(null);
+		SetProgressText(PROGRESS_PLEASE_WAIT + "Reading Folder ...");
+		SetProgressPercent(10);
+		ShowProgressPanel();
+
+		var Sink = new ActiveXObject("MSNTV.MultipleEventSink");
+		var location = parameters.location;
+		var StorageDeviceVN = parameters.StorageDeviceVN;
+		var path = parameters.path;
+		var homeURL = "msntv:/Video/VideoHome.html";
+
+		// If we jumped directly to viewer, add home into back list
+		if (parameters.jump == "true") {
+			mainPanel.CreateTravelLogEntry(homeURL, "Video Home", true);
+		}
+
+		Sink.AttachEvent(TVShell.StorageManager,"OnDeviceRemove" , OnDeviceRemove);
+		
+	</script>
+</head>
+
+<body>
+	<table style="height:100%; width:100%;" cellpadding="0" cellspacing="0">
+		<tr>
+			<td style="height:57px;">
+				<msntv:DMRHeading id="Heading" mainTitle="Videos" subTitle="" helpTopicURL="MSNTV_TRS_TOC_Videos"  />
+			</td>
+		<tr>
+			<td>
+				<table style="width:100%; height:100%;" cellspacing=0 cellpadding=0>
+					<tr>
+						<td class="content" style="width:73%; padding-top:9px; vertical-align:top;">
+							<table style="height:100%; width:100%; cellpadding="0" cellspacing="0">
+								<tr id="selectAllRow" style="height:30px; display:none;">
+									<td style="padding-right:23px; text-align:right; font-size:16px;">
+										Select All <input type=checkbox id="selectAll" onpropertychange="OnSelectAllPropertyChange();" onkeydown="OnSelectAllKeydown();">
+									</td>
+								</tr>
+								<tr>
+									<td>
+										<div id="scrollListDiv" tabindex="-10001" preemptivescroll="false">
+											<table id=warningTable width=100% cellspacing=0 cellpadding=0 style="display:none">
+												<tr width=100%>
+													<td valign=center>
+													<div style='position:relative;left:5px;margin:0 0 0 0;behavior:url(#default#alphaImageLoader);src:url(msntv:/Panels/Images/AlertsIconWarning.png);width:40px;height:40px;'></div>
+													</td>
+													<td id=warningCell style='font-size:16px;padding-top:5px'>
+													</td>
+												</tr>
+											</table>
+										</div>
+									</td>
+								</tr>
+							</table>
+						</td>
+						<td class="sidebar" style="width:27%; vertical-align:top; padding:9px 0px 0px 6px;">
+							<msntv:CustomButton id="playselected" class="sidebarButton" style="display:none;" label="Play" onClick="PlaySelected('video', tempPlaylistUrl);" />
+							<msntv:CustomButton id="done" class="sidebarButton" label="Done" onclick="history.go('msntv:/Video/VideoHome.html');"/>
+						</td>
+					</tr>
+				</table>
+			</td>
+		</tr>
+	</table>
+
+	<div id="playerDiv" style="position:absolute; top:0px; left:0px; visibility:hidden;">
+	</div>
+</body>
+
+<script>
+	if(StorageDeviceVN) {
+		WriteHeadingLabel(StorageDeviceVN, path);
+	}
+
+	//Use try catch to ensure that we will always dimiss the progress
+	//panel even if there's an error.
+	function Init()
+	{
+		try
+		{
+			SetProgressPercent(20);
+			BuildArrays(videoTypes);
+
+			SetProgressPercent(50);
+			setTimeout(Init2,10);
+		}
+		catch (ex)
+		{
+			setTimeout(InitDone,10);
+		}
+	}
+
+	function Init2()
+	{
+		try
+		{
+
+			if (DirectoryArray.length <= 0 && PlaylistArray.length <= 0 && DMRItemArray.length <= 0) {
+				scrollListDiv.innerHTML = "<div style='padding:15px;'>No videos or folders found</div>";	
+				setTimeout(InitDone,10);
+			}
+			else {
+				setTimeout(Init3,10);
+			}
+		}
+		catch (ex)
+		{
+			setTimeout(InitDone,10);
+		}
+	}
+
+	function Init3()
+	{
+		try
+		{
+			if (DMRItemArray.length > 0) {
+				playselected.style.display = "inline-block";
+				selectAllRow.style.display = "block";
+			}
+
+			BuildDirectoryList(scrollListDiv);
+			SetProgressPercent(75);
+			if (document.all.folder0) {
+				folder0.focus();
+			}
+			setTimeout(Init4,10);
+		}
+		catch (ex)
+		{
+			setTimeout(InitDone,10);
+		}
+	}
+
+	function Init4()
+	{
+		try
+		{
+			BuildPlaylistList(scrollListDiv, null);
+			if (!document.all.folder0) {
+				if (document.all.playlist0) {
+					playlist0.focus();
+				}
+				else {
+					done.focus();
+				}
+			}
+			setTimeout(Init5,10);
+		}
+		catch (ex)
+		{
+			setTimeout(InitDone,10);
+		}
+	}
+
+	function Init5()
+	{
+		try
+		{
+//			BuildItemList(scrollListDiv, "Videos");
+			BuildItemList(scrollListDiv, "Videos", null);
+			SetProgressPercent(95);
+		}
+		catch (ex)
+		{
+		}
+
+		setTimeout(InitDone,10);
+	}
+
+	function InitDone()
+	{
+		if(g_fTruncated)
+		{
+			var info="Some videos from this folder can not be viewed. Your "+ProductShortName+" will only show 1,000 total items from this folder.";
+            warningCell.innerText=info;
+			warningTable.style.display="block";
+		}
+	    
+		HideProgressPanel();
+	}
+
+	setTimeout( Init, 10 );
+
+</script>
+</html>

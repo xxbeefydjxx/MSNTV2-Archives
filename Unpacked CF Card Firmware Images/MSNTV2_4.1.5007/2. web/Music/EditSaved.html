@@ -1,0 +1,290 @@
+<html xmlns:msntv>
+<?import namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?import namespace="msntv" implementation="../HTC/DMRHeading.htc">
+<head>
+	<title>Music Edit Saved</title>
+	<link rel=StyleSheet type="text/css" href="../css/Base.css">	
+	<link rel=StyleSheet type="text/css" href="../css/Music.css">
+
+	<script language="Javascript" src="../Javascript/TVShell.js"></script>
+	<script language="javascript" src="../Javascript/ServiceList.js"></script>
+	<script language="javascript" src="../Javascript/VKCodes.js"></script>
+	<script language="Javascript" src="../Javascript/Parameters.js"></script>
+	<script language="javascript" src="../Javascript/DMRCommon.js"></script>
+	<script language="javascript" src="../Javascript/DMRNavigate.js"></script>
+	<script language="Javascript" src="../Javascript/ContentPaneHelp.js"></script>
+	
+	<script>
+	
+		
+		var Sink = new ActiveXObject("MSNTV.MultipleEventSink");
+		var origCheckedItems;
+		
+		function IsShuffleEnabled()
+		{
+			return shuffle.checked;
+		}
+		
+		function OnShufflePropertyChange()
+		{
+			if (window.event.propertyName == "checked") {
+				RebuildList();
+			}
+		}
+		
+		rnd.seed=0;
+		
+		function rnd() {
+			if (rnd.seed == 0 ) {
+				rnd.date = new Date();
+				rnd.seed = rnd.date.getTime();		  
+			}
+			rnd.seed = ( (9301.0 * rnd.seed ) + 49297.0 ) % 233280.0;
+			return rnd.seed / 233280.0;
+		}
+
+		function rand(maxv) {
+			return (Math.ceil( rnd() * maxv ) - 1);
+		}
+		
+		function DisorderList(array1)
+		{
+			var numItems = array1.length;
+			var numSwaps = 0;
+				
+			while ( numSwaps < numItems*2 ) {
+				var a = rand(numItems);
+				var b = rand(numItems);
+				if ( a != b ) {		
+					var tmp = array1[a];
+					array1[a] = array1[b];
+					array1[b] = tmp;
+					numSwaps += 1;
+				}
+			}
+		}
+		
+		function DisorderLists(array1,array2)
+		{
+			var numItems = array1.length;
+			var numSwaps = 0;
+			
+			if ( array2 != null && numItems != array2.length ) {
+				TVShell.Message("array size mismatch " + numItems + " <> " + array2.length);
+				array2 = null;
+			}
+			TVShell.Message("Shuffle " + numItems + " items");
+			
+			while ( numSwaps < numItems*2 ) {
+				var a = rand(numItems);
+				var b = rand(numItems);
+				if ( a != b ) {		
+					var tmp = array1[a];
+					array1[a] = array1[b];
+					array1[b] = tmp;
+					if ( array2 != null ) {
+						tmp = array2[a];
+						array2[a] = array2[b];
+						array2[b] = tmp;
+					}
+					numSwaps += 1;
+				}
+			}
+		}
+		
+		function GetCheckedItems(checksArray)
+		{
+			if (document.all.itemListDiv != null && itemListDiv.all != null ) {
+				var tables = itemListDiv.all.tags("table");
+				for (var i = 0; i < tables.length; i++) {
+					checksArray[i] = tables[i].all.check.checked ? true : false;
+					if ( checksArray[i] ) {
+						TVShell.Message("item " + i + " was checked");
+					}
+				}
+			}
+		}
+		
+		function CheckItems(checksArray)
+		{
+			if ( checksArray == null ) {
+				return;
+			}
+			if ( document.all.itemListDiv != null && itemListDiv.all != null ) {
+				var tables = itemListDiv.all.tags("table");
+				if ( checksArray.length == tables.length ) {
+					for (var i = 0; i < checksArray.length; i++) {
+						if ( checksArray[i] == true ) {
+							TVShell.Message("item " + i + "now checked");
+							tables[i].all.check.checked = true;
+						} else {
+							tables[i].all.check.checked = false;
+						}
+					}
+				}
+			}
+		}
+			
+		function BuildArray()
+		{
+			var i;
+			var document = new ActiveXObject("Msxml2.DOMDocument");
+			DMRItemArray = new Array();
+			var checksArray = new Array();
+			
+
+			if ( IsShuffleEnabled() ) {
+				GetCheckedItems(checksArray);
+				origCheckedItems = new Array();
+				for ( i=0; i < checksArray.length; i++ ) {
+					origCheckedItems[i] = checksArray[i]; 
+				}
+			} else {
+				checksArray = origCheckedItems;
+			}
+			
+			scrollListDiv.innerHTML = "";
+
+			if (document.load(savedSelectionsUrl)) {
+				var nodes = document.selectNodes("//Entry");
+
+				TVShell.Message("BuildArray " + nodes.length + " nodes");
+				if (nodes && nodes.length > 0) {
+					for (var i = 0; i < nodes.length; i++) {
+						var node = nodes.item(i);
+						var name = node.selectSingleNode(".//DisplayName").text;
+						var href = node.selectSingleNode(".//Ref").getAttribute("href");
+						if (href) {
+							DMRItemArray[i] = new DMRItem(name, href, "");
+						}
+					}
+					if ( IsShuffleEnabled() ) {
+						DisorderLists(DMRItemArray,checksArray);
+					}
+				}
+				if (DMRItemArray.length > 0) {
+					selectAllRow.style.display = "block";
+				}
+				BuildItemList(scrollListDiv, "Music Tracks", "./Images/MusicTrack.png");
+				CheckItems(checksArray);
+			}
+		}
+		
+
+
+		function RebuildList()
+		{
+			if ( DMRItemArray.length != 0 ) {
+				BuildArray();
+			}
+		}
+		
+		
+		function Delete()
+		{
+			if (CheckSelection("Remove", "music track") &&
+				PanelManager.CustomMessageBox("Are you sure you want to remove the selected music tracks?",
+											  "", "Remove;Do Not Remove", 0, "", false, 0x30, 1) == 0) {
+
+				var document = new ActiveXObject("Msxml2.DOMDocument");
+
+				if (document.load(savedSelectionsUrl)) {
+					var tables = itemListDiv.all.tags("table");
+					var nodes = document.selectNodes("//Entry");
+
+					if (nodes && nodes.length > 0 && nodes.length == tables.length) {
+						for (var i = 0; i < tables.length; i++) {
+							if (tables[i].all.check.checked) {
+								nodes[i].parentNode.removeChild(nodes[i]);
+							}
+						}
+					}
+					document.save(savedSelectionsUrl);
+				}
+				BuildArray();
+				if (DMRItemArray.length == 0) {
+					history.go("msntv:/Music/MusicHome.html");
+				}
+			}
+		}
+
+		// Mount all enabled shares. Music in this list could come from any of them.
+		for (var i = 0; i < HomeNetworkObj.Count; i++) {
+			var host = HomeNetworkObj.Item(i);
+			for (var j = 0; j < host.Count; j++) {
+				var service = host.Item(j);
+				if (service.Enabled) {
+					service.Mount();
+				}
+			}
+		}
+	</script>
+</head>
+
+<body>
+	<table style="height:100%; width:100%;" cellpadding="0" cellspacing="0">
+		<tr>
+			<td style="height:57px;">
+				<msntv:DMRHeading id="Heading" mainTitle="Music" subTitle="My Selections" helpTopicURL="MSNTV_TRS_TOC_Music" />
+			</td>
+		<tr>
+			<td>
+				<table style="width:100%; height:100%;" cellspacing=0 cellpadding=0>
+					<tr>
+						<td class="content" style="width:73%; padding-top:9px; vertical-align:top;">
+							<table style="height:100%; width:100%; cellpadding="0" cellspacing="0">
+								<tr id="selectAllRow" style="height:30px; display:none;">
+									<td style="width:70%; padding-right:23px; text-align:right; font-size:16px;">
+										Shuffle <input type=checkbox id="shuffle" onpropertychange="OnShufflePropertyChange();" onkeydown="OnSelectAllKeydown();">
+									</td>
+									<td style="width:30%; padding-right:23px; text-align:right; font-size:16px;">
+										Select All <input type=checkbox id="selectAll" onpropertychange="OnSelectAllPropertyChange();" onkeydown="OnSelectAllKeydown();">
+									</td>
+								</tr>
+								<tr>
+									<td colspan="2">
+										<div id="scrollListDiv" tabindex="-10001" preemptivescroll="false">
+										</div>
+									</td>
+								</tr>
+							</table>
+						</td>
+						<td class="sidebar" style="width:27%; padding:9px 0px 0px 6px;">
+							<table style="height:100%; width:100%; cellpadding="0" cellspacing="0">
+								<tr>
+									<td style="vertical-align:top;">
+										<msntv:CustomButton id="playselected" class="sidebarButton" label="Play" onClick="PlaySelected('music track', tempSavedSelectionsUrl);" />
+										<msntv:CustomButton id="delete" class="sidebarButton" label="Remove" onclick="Delete();"/>
+										<msntv:CustomButton id="done" class="sidebarButton" label="Done" onclick="history.go('msntv:/Music/MusicHome.html');"/>
+									
+									</td>
+								</tr>
+								<tr>
+									<td style="height:40px;">
+									</td>
+								</tr>
+							</table>
+						</td>
+					</tr>
+				</table>
+			</td>
+		</tr>
+	</table>
+
+	<div id="playerDiv" style="position:absolute; top:0px; left:0px; visibility:hidden;">
+	</div>
+</body>
+
+<script>
+
+	BuildArray();
+	if (DMRItemArray.length <= 0) {
+		scrollListDiv.innerHTML = "<div style='padding:15px;'>No music selections found</div>";	
+	}
+	else {
+		selectAll.checked = true;
+	}
+	playselected.focus();
+</script>
+
+</html>

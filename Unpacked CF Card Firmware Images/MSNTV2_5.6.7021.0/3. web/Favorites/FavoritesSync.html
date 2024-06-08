@@ -1,0 +1,766 @@
+<html xmlns:msntv>
+<?import namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?import namespace="msntv" implementation="../HTC/panelheading.htc">
+<?import namespace="msntv" implementation="../HTC/Progress.htc">
+<head>
+<meta http-equiv="Content-Language" content="en-us">
+
+<title>Favorites Panel</title>
+
+<link rel=StyleSheet type="text/css" href="../CSS/Default.css">
+<link rel=StyleSheet type="text/css" href="../CSS/Panel.css">
+<script language="Javascript" src="../Javascript/TVShell.js"></script>
+<script language="Javascript" src="../Javascript/PanelImpl.js"></script>
+<script language="Javascript" src="../Javascript/ContentPaneHelp.js"></script>
+<script language="Javascript" src="../Javascript/Favorites.js"></script>
+<script language="Javascript">
+var thisPanel = PanelManager.Item("favoritespanel");
+var Sink = new ActiveXObject("MSNTV.MultipleEventSink");
+var gResponseReady = false;
+var gImport = false;
+var gDownloadStarted = null;
+var gDownloadInterval = 0;
+var gDownloadAgain=0;
+var gXMLHttpRequest=null;
+var MAX_TITLE_LEN = 242;
+var MAX_URL_LEN = 2048;
+var gStartSyncID = 0;
+var gInitiatedMigration = false;
+var gFavoriteSyncURL = "";
+
+
+
+// Escape backslashes and single quotes
+function escapeString(sIn)
+{
+	var sResult = '';
+	if (null != sIn && '' != sIn)
+	{
+		sResult = sIn.replace(/\\/g, "\\\\");
+		sResult = sResult.replace(/\'/g, "\\'");	// "
+	}
+	return sResult;
+}
+
+function cleanup()
+{
+	if (gXMLHttpRequest != null ){
+		if ( gXMLHttpRequest.readyState < 4 )
+			gXMLHttpRequest.abort();
+		delete gXMLHttpRequest;
+		gXMLHttpRequest = null;
+	}
+
+}
+
+function gotoFavorites()
+{
+	cleanup();
+	thisPanel.GotoURL("msntv:/favorites/favorites.html");
+}
+
+
+function updateStatusMessage( msg )
+{
+	TVShell.Message("FavoritesSync: " + msg);
+}
+
+
+
+
+function uploadFavorites()
+{
+
+
+	if ( g_oFavXml != null )
+	{
+		updateStatusMessage("Start uploading favorites...");
+		var hdrArray = new Array();
+		var i=0;
+
+		hdrArray[i++] = "CID:" + g_CID_HEX;
+		cleanup();
+		gXMLHttpRequest = XmlRequest("POST", ASYNCHRONOUS, gFavoriteSyncURL, g_oFavXml.xml, respondToImport, hdrArray);
+
+		delete hdrArray;
+		hdrArray = null;
+		updateStatusMessage("Waiting for upload to respond...");
+		updateProgressBar(30);
+	}
+	else
+	{
+		gImport = true;
+		updateStatusMessage("No favorites to upload.");
+	}
+
+	
+}
+
+
+function downloadFavorites()
+{
+	updateProgressBar(50);
+	loadRoamingFavorites();
+	updateProgressBar(55);
+}
+
+
+function syncFavorites()
+{
+
+		
+	updateStatusMessage("Begin to Synchronize...");
+	
+	if ( g_oFavXml )
+	{
+		var favNode = g_oFavXml.selectSingleNode("//favorites");
+		var lv = favNode.getAttribute("v");
+		var delaySync = favNode.getAttribute("delaySync");
+		var resync =  favNode.getAttribute("resync");
+		TVShell.EventLog.Important("FavoritesSync.html       syncFavorites:  delaySync=" + delaySync + "  resync=" + resync + "   lv=" + lv);
+
+		if ((TVShell.UserManager.CurrentUser.FavoritesCount > 0)  && 
+		   (( delaySync && delaySync == "true") ||	(lv == null || lv == "") ))
+		{	// needs to import 
+			TVShell.Message("FavoriteSync: start import process.   lv=" + lv + " delaySync=" + delaySync);
+			updateProgressBar(20);
+			uploadFavorites();
+			setTimeout("waitToDownload();",3000);
+		}
+		else
+		{
+			TVShell.Message("  Nothing to  import, try to sync favorites...");
+			updateProgressBar(50);
+			if ( (delaySync && delaySync == "true") || (resync && resync == "true") ){
+				loadRoamingFavorites();
+			}
+			else
+				loadRoamingFavorites(lv);
+			updateProgressBar(55);
+		}
+	}
+}
+
+
+function waitToDownload()
+{
+	if ( gResponseReady ){
+		if ( gImport )
+		{
+			TVShell.EventLog.Important("  Import completed.  start to sync favorites...");
+			var favNode = g_oFavXml.selectSingleNode("//favorites");
+			favNode.setAttribute("delaySync","false");
+			g_favoritesMgr.saveFavorites();
+
+			downloadFavorites();
+		}
+		else
+		{
+			TVShell.EventLog.Important("FavoritesSync.html       waitToDownload:  Import failed. Try to sync some other time.");
+			gotoFavorites();
+		}
+	}
+	else
+		setTimeout("waitToDownload();", 3000);
+}
+
+
+function updateProgressBar( val )
+{
+	var theProgressBar = document.getElementById("syncProgress");
+	if ( theProgressBar != null )
+		theProgressBar.percentComplete = val;
+}
+
+
+function  ModifyTitles(  nodeList  )
+{
+
+	if  (  nodeList  ==  null  )
+		return null;
+
+	var  title;
+	var currNode;
+	var titleNode;
+	var hrefNode;
+	var theHref;
+
+	for  (  var  i=0;  i  <  nodeList.length;  i++  ){
+		currNode  =  nodeList.item(i);
+		if ( currNode.nodeName == "favfolder" ){
+			title = currNode.getAttribute("title");
+			title = title.replace(/[\/|\\|:|*|?|\"|\<|\>|\|]/g,"-");	// "
+			if ( title.length > MAX_TITLE_LEN ){
+				TVShell.EventLog.Important("FavoritesSync.html   ModifyTitles:  exceeded favorite folder title len=" + title.length );
+				title = title.substr(0,MAX_TITLE_LEN);
+			}
+			currNode.setAttribute("title", title );
+			if ( currNode.hasChildNodes() )
+				ModifyTitles(  currNode.childNodes);
+				
+		}
+		else if ( currNode.nodeName == "favorite"){
+			titleNode = currNode.selectSingleNode("title");
+			title = titleNode.text;
+			title = title.replace(/[\/|\\|:|*|?|\"|\<|\>|\|]/g,"-");	// "
+			if ( title.length > MAX_TITLE_LEN ){
+				TVShell.EventLog.Important("FavoritesSync.html   ModifyTitles:  exceeded favorite title len=" + title.length );
+				title = title.substr(0,MAX_TITLE_LEN);				
+			}
+			titleNode.text = title;
+			
+			hrefNode = currNode.selectSingleNode("href");
+			theHref = hrefNode.text;
+			if ( theHref.length > MAX_URL_LEN ){
+				TVShell.EventLog.Important("FavoritesSync.html   ModifyTitles:  exceeded favorite href len=" + theHref.length );
+				hrefNode.text = theHref.substr(0,MAX_URL_LEN);
+			}
+			g_favoritesMgr.convertThumbnailName( currNode );
+		}
+		else if ( currNode.nodeName == "favorites" && currNode.hasChildNodes()) {
+				ModifyTitles(  currNode.childNodes);			
+		}
+
+	} 
+}
+
+
+function verifyTitles()
+{
+	if ( gStartSyncID != 0 )
+		gStartSyncID = 0;
+
+	updateProgressBar(5);
+	
+	var favNode = g_oFavXml.selectSingleNode("//favorites");
+	var lv = favNode.getAttribute("v");
+
+	if ( lv == null || lv == "" )
+	{
+		TVShell.Message("FavoriteSync.html	Start ModifyTitles() and convertThumbnailName()");
+		ModifyTitles(g_oFavXml.selectNodes("//favorites"));
+		g_favoritesMgr.saveFavorites();
+	}
+
+	updateProgressBar(15);
+	syncFavorites();
+}
+
+
+
+function InitiateSync()
+{
+	if ( gStartSyncID != 0 )
+		gStartSyncID = 0;
+
+	updateProgressBar(5);
+
+	
+	var favNode = g_oFavXml.selectSingleNode("//favorites");
+
+	// check to see if migration is needed
+	var uAttrib = favNode.getAttribute("u");	// skydrive favorites folder API
+	var migratedAttrib = favNode.getAttribute("migrated");
+	updateStatusMessage(" migrated=" + migratedAttrib +  "  uAttrib=" + uAttrib);
+
+	// if there is a "u" attribute then migration has completed
+	if ( uAttrib == null || uAttrib == "" )
+	{
+		// if there is no migration attribute, then we can initiate the migration otherwise go to the next step
+		if ( (migratedAttrib == null || migratedAttrib != "true") && ! gInitiatedMigration )
+		{
+			setTimeout("InitMigration()", 100);
+			return;
+		}
+		
+	}
+
+	setTimeout("syncFavorites()", 100);
+		
+}
+
+
+function InitMigration()
+{
+
+	if ( g_Ticket == null || g_Ticket == "" ){
+		// start again in 5 seconds, to wait for the RPS ticket
+		gStartSyncID = setTimeout("InitiateSync()", 5000);
+		return;
+	}
+
+	var migrationEntry = TVShell.UserManager.CurrentUser.ServiceList("Favorites::Migration");
+
+	if ( migrationEntry != null )
+	{
+		// construct the migration URL to include the RPS ticket
+		var migrationURL = migrationEntry.URL;
+		migrationURL += "?" + g_Ticket;
+
+		updateProgressBar(10);
+		updateStatusMessage("Start migration...");
+
+		// load the skydrive favorites page to initiate migrateion.
+		var theFrame = document.all.hiddenframe;
+		theFrame.attachEvent( "onload", IframeOnload);
+		
+		theFrame.src = migrationURL;
+	}
+	
+	gInitiatedMigration = true;
+	
+	// let's wait for 1 minutes to start the favorites sync, don't need to worry about the migration
+	// process from skydrive.  They will take their time to migrate.
+	gStartSyncID = setTimeout("InitiateSync()", 60000);
+}
+
+
+
+function startSyncNow()
+{
+	if ( gStartSyncID != 0 ){
+		clearTimeout( gStartSyncID );
+		gStartSyncID = 0;
+		setTimeout("InitiateSync();",10);
+	}
+}
+
+function OnBeforeShow(name)
+{
+	if ( name == "favoritespanel"){
+		startSyncNow();
+		TVShell.Message("FavoriteSync.html    Exiting OnBeforeShow()     It is favoritesPanel");
+	}
+}
+
+
+function init()
+{
+	try
+	{
+		g_oFavXml = g_favoritesMgr.xml;
+	}
+	catch(e)
+	{
+		e.description += "\r\nError getting favorites.xml";
+		window.setTimeout("location.reload()",15000);
+		return;
+	}
+		
+	var favoritesList = g_oFavXml.selectNodes("//favorite");
+	var folderList = g_oFavXml.selectNodes("//favfolder");
+
+	TVShell.UserManager.CurrentUser.FavoritesCount = favoritesList.length+folderList.length;
+	TVShell.EventLog.Important("FavoritesSync.html   total folders=" + folderList.length + "  total favorites=" + favoritesList.length + "  CurrentUser.FavoritesCount=" + TVShell.UserManager.CurrentUser.FavoritesCount);
+	
+	thisPanel.ClearTravelLog();
+
+	var authServerEntry = TVShell.UserManager.CurrentUser.ServiceList("Skydrive::AuthServer");
+	var appIdEntry = TVShell.UserManager.CurrentUser.ServiceList("Skydrive::AppId");
+	var favoritesSyncEntry = TVShell.UserManager.CurrentUser.ServiceList("Favorites::SyncServer");
+
+	if ( authServerEntry != null && appIdEntry != null && favoritesSyncEntry != null )
+	{
+		g_serviceTarget = authServerEntry.URL;
+		g_servicePolicy =  authServerEntry.Description;
+		
+		g_appID = appIdEntry.Description;
+
+		gFavoriteSyncURL = favoritesSyncEntry.URL;
+
+		TVShell.Message("favoritesSync.html   target=" + g_serviceTarget + "  policy=" + g_servicePolicy + "  appID=" + g_appID );
+		TVShell.Message("     favoritesSyncURL=" + gFavoriteSyncURL );
+		
+		RequestToken(false); //from cache
+	}
+	else
+	{
+		TVShell.Message("FavoritesSync.html                NO   authServer or appId or favoritesSync service list entries found.");
+		setTimeout("gotoFavorites();", 10);
+		return;
+	}
+
+	
+	
+	var url = thisPanel.URL;
+	var queryStr = url.indexOf("?") > 0 ? url.substr(url.indexOf("?")) : null;
+	var timeoutVal = 20000;
+	var SMALLTIMEOUT = 100;
+	
+	if ( queryStr && queryStr.indexOf("timeout") != -1)
+	{
+		var timeoutStr = queryStr.indexOf("=") > 0 ? queryStr.substr(queryStr.indexOf("=")+1) : null;
+		if ( timeoutStr ){
+			timeoutVal = parseInt( timeoutStr );
+			if ( timeoutVal <= SMALLTIMEOUT )
+				timeoutVal = SMALLTIMEOUT;
+		}
+		TVShell.Message("FavoriteSync.html:    queryStr=" + queryStr +  "  timeoutStr=" + timeoutStr + "  timeoutVal=" + timeoutVal);
+	}
+
+	drawSync();
+
+	if ( thisPanel.state <= 1 )  // rising or showing
+		timeoutVal = SMALLTIMEOUT;
+
+	gStartSyncID = setTimeout("InitiateSync();",timeoutVal);
+}
+
+
+
+function MergeShortcuts( xml )
+{
+	if ( typeof(xml) != "undefined" && xml != null && xml != "" )
+	{
+
+		updateStatusMessage("Begin to merge shortcuts...");
+		updateProgressBar(85);
+
+		// this is the downloaded XML
+		var newFavsDoc =  TVShell.CreateXmlDocument();
+		newFavsDoc.async = false;
+		newFavsDoc.loadXML( xml );
+
+		// copying shortcuts
+		var shortcutsList = g_oFavXml.selectNodes("//favorite[(propbag)]");
+		var shortcutNode;
+		var newNode;
+
+		updateStatusMessage(" shortcuts found:  " + ((shortcutsList != null )? shortcutsList.length : "zero") );
+		for ( var i=0; i < shortcutsList.length; i++ ){
+			shortcutNode = shortcutsList.item(i);
+
+			// need to consider for the .url in the title.   possible bug
+			var strSreachTitle= shortcutNode.selectSingleNode("title").text;
+			if ( strSreachTitle.lastIndexOf(".url") == -1)
+				strSreachTitle += ".url";
+			newNode = newFavsDoc.selectSingleNode("//favorite[title='" + escapeString( strSreachTitle) + "']");
+			
+			if ( newNode != null )
+				newNode.appendChild(shortcutNode.selectSingleNode("propbag"));
+		}
+
+		g_oFavXml.documentElement = newFavsDoc.documentElement;
+		newFavsDoc = null;
+
+		g_favoritesMgr.saveFavorites();
+		updateProgressBar(90);
+	}
+	
+}
+
+
+
+
+function loadRoamingFavorites(lv)
+{
+	updateStatusMessage("Begin downloading favorites...   lv:" + lv);
+
+	cleanup();
+
+	var hdrArray = new Array();
+	var i=0;
+
+	// construct additional headers
+	hdrArray[i++] = "CID:" + g_CID_HEX;
+	
+	if ( typeof(lv) != "undefined" && lv != null )
+	{
+		hdrArray[i++] = "If-Modified-Since:" + lv;
+		TVShell.Message( "header[1]  " + hdrArray[1] );
+	}
+
+	gXMLHttpRequest = XmlRequest("GET", ASYNCHRONOUS, gFavoriteSyncURL, "", OnRoamingFavoriteXMLLoaded, hdrArray);
+
+	gDownloadStarted = new Date();
+	gDownloadInterval = setInterval("checkDownload();",20000);
+	
+	updateStatusMessage("Waiting for download favorites response...");
+
+	delete hdrArray;
+	hdrArray = null;
+}
+
+
+function checkDownload()
+{
+	var rightNow = new Date();
+	var diff = rightNow.getTime() - gDownloadStarted.getTime();
+
+	if ( diff >= 180000 ){
+		clearInterval( gDownloadInterval );
+		if ( gDownloadAgain < 2 )
+		{
+			loadRoamingFavorites();
+			gDownloadAgain++;
+			TVShell.Message("   restart the download...");		
+			var newProgress = gDownloadAgain * 5 + document.all.syncProgress.percentComplete;
+			updateProgressBar( newProgress );
+		}
+		else 
+		{
+			TVShell.EventLog.Important("   waited for too long.  Terminating favorites download...");
+			cleanup();
+
+			var favNode = g_oFavXml.selectSingleNode("//favorites");
+			if ( TVShell.UserManager.CurrentUser.FavoritesCount > 0 ){
+				TVShell.EventLog.Important("checkDownload      setting resync=true");
+				favNode.setAttribute("resync","true");
+				g_favoritesMgr.saveFavorites();	
+			}
+			else{
+				var lv=favNode.getAttribute("v");
+				if ( lv=null || lv == "" ){
+					drawWaitingToResync();
+					return;
+				}
+			}
+			gotoFavorites();
+		}
+	}
+}
+
+var minutes2Resync=0;
+var updateResyncInterval = 0;
+function updateResync()
+{
+	if ( minutes2Resync > 0 )
+		document.all.timeLeft.innerHTML = minutes2Resync--;
+	else
+		syncAgain();
+		
+}
+
+
+function syncAgain()
+{
+	if ( updateResyncInterval != 0 ){
+		clearInterval(updateResyncInterval);
+		updateResyncInterval = 0;
+	}
+	
+	drawSync()
+	setTimeout("downloadFavorites();",100);	
+}
+
+
+function drawSync()
+{
+	document.all.resyncContent.style.display="none";
+	document.all.statusContent.style.display = "block";
+	updateProgressBar(0);
+
+}
+
+
+function drawWaitingToResync()
+{
+	document.all.timeLeft.innerHTML = 5;
+	document.all.statusContent.style.display = "none";
+	document.all.resyncContent.style.display="block";
+	minutes2Resync=4;
+	updateResyncInterval = setInterval("updateResync();",60000);	
+	document.all.syncnow.focus();
+}
+
+function OnRoamingFavoriteXMLLoaded(req)
+{
+	clearInterval( gDownloadInterval );
+	gDownloadInterval = 0;
+
+	var rightNow = new Date();
+	var diff = rightNow.getTime() - gDownloadStarted.getTime();
+	
+	TVShell.Message("  OnRoamingFavoriteXMLLoaded request status: " + req.status  +  "     download time: " + diff );
+	var favNode = g_oFavXml.selectSingleNode("//favorites");
+	updateProgressBar(75);
+
+
+	if ( req.status == 304 )
+	{
+		favNode.setAttribute("resync","false");
+		favNode.setAttribute("delaySync","false");
+		g_favoritesMgr.saveFavorites();
+		TVShell.EventLog.Important("Download favorites completed...   No changes");
+	}
+	else if ( req.status == 200 )
+	{
+		MergeShortcuts( req.responseText );
+	}
+	else
+	{
+		var lv= favNode.getAttribute("v");
+		TVShell.EventLog.Usage("RFSync", "dlHr=" + req.status + "|Msg=" + req.responseText);
+		TVShell.EventLog.Important(req.responseText);
+
+		TVShell.EventLog.Important("OnRoamingFavoriteXMLLoaded:     Download failed,  setting resync=true    status=" + req.status);
+		favNode.setAttribute("resync","true");
+		g_favoritesMgr.saveFavorites();
+
+		updateStatusMessage("Download failed, try again later...");
+
+		cleanup();
+		
+		if ( TVShell.UserManager.CurrentUser.FavoritesCount <= 0 && (lv==null || lv=="")){
+			drawWaitingToResync();
+			return;
+		}
+	}
+		
+	updateProgressBar(100);	
+	gotoFavorites();		
+		
+}
+
+
+
+
+
+
+var gImportRetry=0;
+function respondToImport( httpRequest )
+{
+	TVShell.Message("  respondToImport request status: " + httpRequest.status);
+
+	if ( httpRequest.status == 200 )
+	{
+		gImport = true;
+		gResponseReady = true;
+		updateProgressBar(40);
+		updateStatusMessage("Upload favorites completed...");		
+	}
+	else
+	{
+		var favNode = g_oFavXml.selectSingleNode("//favorites");
+		var lv = favNode.getAttribute("v");
+		TVShell.EventLog.Usage("RFSync", "imHr=" +  httpRequest.status + "|Msg=" + httpRequest.responseText);
+		if ((lv == null || lv == "") && (gImportRetry < 3)){
+			setTimeout("uploadFavorites();",500);
+			gImportRetry++;
+			return;
+		}
+		updateStatusMessage("Upload favorites failed...   "  + httpRequest.responseText);				
+	}
+	
+}
+
+
+function OnServiceListKeyDown(ServiceEntry)
+{
+	if ( PanelManager.FocusedPanel.Name == "favoritespanel" )
+		if( ServiceEntry.name == "browser::back"  || ServiceEntry.name == "browser::esc"){
+			PanelManager.Hide(window.name);
+		}
+		
+	if (ServiceEntry.name.substr(0,ServiceEntry.name.length-1) == "favorite::shortcut") {
+		TVShell.Message("FavoritesSync.html: shortcut keydown: keycode="+ServiceEntry.KeyCode);
+		var msg = "<p>Favorite shortcut keys are not available at the moment.</p><p>Please try again in a few minutes.</p>";
+		TVShell.PanelManager.CustomMessageBox(msg,"", "OK", 0,"", false, MGX_ICON_WARNING, MGX_SIZE_SMALL);	
+	}
+
+	
+}
+
+
+function IframeOnload()
+{
+	var theFrame = document.all.hiddenframe;
+
+	if ( theFrame.src.indexOf("Favorites") > 0 )
+	{
+		// don't need this event any more
+		theFrame.detachEvent( "onload", IframeOnload);
+		
+		// load the blank page, to avoid the skydrive favorites page from refreshing.
+		theFrame.src = "msntv:/msntv:/Shell/Empty.html";
+
+		// remember that migration has been performed.
+		var favNode = g_oFavXml.selectSingleNode("//favorites");
+		if ( favNode != null )
+		{
+			favNode.setAttribute("migrated", "true");
+		}
+		
+	}
+}
+
+
+
+
+Sink.AttachEvent(TVShell.LoginManager, "IDCRLOnAuthStateChanged",IDCRLOnAuthStateChanged);
+Sink.AttachEvent(TVShell,		"OnServiceListKeyDown",	OnServiceListKeyDown);
+Sink.AttachEvent(PanelManager,				"OnBeforeShow",    OnBeforeShow);
+
+
+
+</script>
+</head>
+<body style="behavior:none;margin:0px;" onunload="cleanup();">
+ <div style="width:100%;height:100%;behavior: url(../HTC/PanelBG.htc);">
+	<div style="width:100%;height:100%;padding:15px;">
+	<table class="contentText" style="width:100%; height:100%;"  cellspacing=0 cellpadding=0 border=0>
+		<tr><td class="heading" height=30>
+<script>
+var helpURL = GetPaneHelpURL(PH_topicTOC,'MSNTV_TRS_TOC_Favs.htm');
+document.write("<msntv:PanelHeading id=\"PanelHeader\" label=\"Favorites\" helpURL=\""+ helpURL + "\" />");
+</script>
+			</td></tr>
+		<tr><td height=35 align="left">
+				<div id="PanelSubHeader" style="padding:0px 0px 0px 8px;"></div>
+			</td></tr>
+		<tr><td class="topGradient" style="height:1px;"></td></tr>
+		<tr><td height=100% class="content" style="vertical-align:top;">
+				<div id="statusContent" style="display:none">
+					<table width=100%>
+					    <tr>
+						<td width=20></td><td width=100 height=100></td><td width=20></td>
+					    </tr>
+					    <tr>
+						<td></td><td><span id=syncStatus>Please wait while we update your favorites.</span></td>
+						<td></td>
+					    </tr>
+					    <tr>
+						<td></td><td><span style="vertical-align:middle; height:36px;">
+							<msntv:progressbar id='syncProgress' style='margin-top:13px; width=100%;'/></span></td>
+						<td></td>
+					    </tr>
+					</table>
+				</div>
+				<div id="resyncContent" style="display:none">
+					<table>
+					    <tr height=20>
+						<td width=20></td><td></td>	<td width=20></td>
+					    </tr>
+					    <tr>
+						<td></td><td>Favorites server is busy.</td>	<td></td>
+					    </tr>
+					    <tr>
+						<td></td>
+						<td>We will try to to synchronize again in <span id=timeLeft style="font-weight:bold;">5</span> minutes.</td>
+						<td></td>
+					    </tr>
+					    <tr>
+						<td></td><td>Choose <b>Sync Now</b> if you would like to start the synchronize process now.</td>
+						<td></td>
+					    </tr>
+					    <tr>
+						<td></td><td align=center><msntv:CustomButton id="syncnow" label="Sync Now" onClick="syncAgain();" /></td>
+						<td></td>
+					    </tr>
+					</table>
+				</div>
+			</td></tr>
+	</table>
+		</div>
+	</div>
+	<iframe id="hiddenframe" style="display:none" src="msntv:/Shell/Empty.html"></iframe>
+	<script>
+	       setTimeout("init();",100);
+
+
+		function IsMSNTVScalingEnabled() { return false; }
+		SetMSNTVScale();
+	</script>
+</body>
+</html>
+

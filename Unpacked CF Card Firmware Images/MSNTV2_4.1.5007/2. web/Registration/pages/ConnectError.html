@@ -1,0 +1,70 @@
+<HTML xmlns:msntv> <?import namespace="msntv" implementation="msntv:/HTC/CustomButton.htc"><HEAD> <meta name=vs_targetSchema content="http://schemas.microsoft.com/intellisense/ie5"> <title id="title">Unable to Connect</title><link rel=stylesheet type="text/css" href="../css/Registration.css"> <SCRIPT LANGUAGE=Javascript SRC="msntv:/Javascript/TVShell.js"></SCRIPT> <SCRIPT LANGUAGE=Javascript SRC="msntv:/Javascript/ConnectionManager.js"></SCRIPT> <SCRIPT LANGUAGE=Javascript SRC="msntv:/Javascript/ConnectionErrors.js"></SCRIPT> <SCRIPT>
+			SetErrorMode(WANErrorMode);
+
+			function GotoConnect()
+			{
+				TVShell.PanelManager.Item('main').NoBackToMe = true;
+				LoginToService();
+			}
+
+			function GotoSettings()
+			{
+				if ( IsWirelessError() ) {
+					var conPage = escape("msntv:/Registration/Pages/ConnectedWireless.html");
+					document.location = "msntv:/Settings/Network/Wireless.html?onSuccess="+conPage;
+				} else {
+					document.location = "msntv:/Settings/ConnectionSettings.html?confirm=true";
+				}
+			}
+
+			function KeyDown()
+			{
+				if (event.altKey)
+					errorDIV.style.visibility = "visible";
+			}
+			
+			function IsWirelessError()
+			{
+				if (UsingWireless){			
+					switch (ErrorCode){
+					case ConnectError_NoLine:
+					case ConnectError_RequireWirelessSettings:
+					case ConnectError_WepKeyIncorrect:
+						return true;
+					}
+				}
+				return false;
+			}
+			
+			
+		</SCRIPT> <STYLE> .arrow { width:8px; height:11px; border:0; vertical-align:middle; } #errorDIV { position: absolute; left: 20px; bottom: 48px; font-size: 16px; visibility: hidden; } #buttonBar msntv\:CustomButton { margin-left:15px; margin-right:0px; } </STYLE> </HEAD><BODY onkeydown="KeyDown()"><DIV id=title> <SCRIPT>
+				document.write(FriendlyErrorTitle());
+			</SCRIPT> </DIV><DIV id=main> <SCRIPT>
+				document.write(FriendlyErrorBody(true));
+				var output = "";
+				if (!UsingBroadband) {									
+					switch (ErrorCode) {
+						case ConnectError_NoCarrier:
+						case ConnectError_NoDialTone:
+						case ConnectError_NoAnswer:
+						case ConnectError_ExtensionOffhook:
+						case ConnectError_IncomingCall:
+						case ConnectError_LineInUse:						
+							output = "";
+
+						default:
+							output = "<P>To try connecting again, choose <EM>Try Again</EM>.</P>";
+							break;
+					}
+				} else {
+					output = "<P>To try connecting again, choose <EM>Try Again</EM>.</P>";
+				}
+
+				document.write(output);
+			</SCRIPT> </DIV><div id="footer"> <SCRIPT>
+					document.write('<msntv:CustomButton label="Settings" onClick="GotoSettings()" />');
+				</SCRIPT> <msntv:CustomButton id=default label="Try Again" onClick="GotoConnect();" /> <script>
+					document.all["default"].focus();
+				</script> </div><DIV id=errorDIV> <SCRIPT>
+				document.write(ShortErrorMessage());
+			</SCRIPT> </DIV> </body> </HTML>

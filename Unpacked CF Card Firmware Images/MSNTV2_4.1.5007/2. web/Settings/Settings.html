@@ -1,0 +1,45 @@
+<HTML xmlns:msntv>
+<?IMPORT namespace="msntv" implementation="../HTC/CustomButton.htc">
+<?IMPORT namespace="msntv" implementation="../HTC/SettingsHeading.htc">
+<TITLE>Settings</TITLE>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/TVShell.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/ServiceList.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/ConnectionManager.js"></SCRIPT>
+<SCRIPT LANGUAGE=Javascript SRC="../Javascript/SettingsTemplate.js"></SCRIPT>
+
+<LINK REL=StyleSheet TYPE="text/css" HREF="../CSS/Settings.css">
+</HEAD>
+
+<BODY>
+
+<SCRIPT>
+function TestLAN()
+{
+	return GotoLANPage("msntv:/Settings/Network/HomeNetworking.html");
+}
+</SCRIPT>
+
+<SCRIPT>OpenSettingsTable( "Settings" , "" , "" );</SCRIPT>
+
+<DIV id=sideBar>
+	<msntv:CustomButton onclick="history.go(-1)" class=sideBarButton id="default" label="Done" />
+	<script>document.all("default").focus();</script>
+</DIV>
+
+<DIV id=scrollArea>
+	<A href="ConnectionSettings.html" class=topic id=BasicDialing>Connection settings</A>
+	<DIV class=description>View or change settings for how your <SCRIPT>document.write(ProductShortName);</SCRIPT> connects to the <SCRIPT>document.write(ServiceFullName);</SCRIPT></DIV>
+
+	<A onClick='TestLAN();' class=topic id=HomeNetwork>Manage your home network</A>
+	<DIV class=description>View or change settings for how your <SCRIPT>document.write(ProductShortName);</SCRIPT> connects to other computers on your home network</DIV>
+
+	<A href="NightlyUpdate.html" class=topic id=AutoUpdate>Automatic update</A>
+	<DIV class=description>Set your <SCRIPT>document.write(ProductShortName);</SCRIPT> to automatically check for updates</DIV>
+
+	<A href="TV/SetupInfo.html" class=topic id=TVCenter>TV Settings</A>
+	<DIV class=description>Adjust your TV settings for optimal viewing</DIV>
+</DIV>
+
+<SCRIPT>CloseSettingsTable();</SCRIPT>
+
+</BODY>

@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8" ?> 
+<popupcontrol>
+	<whitelist>
+		<entry url="http://www.windowsmedia.com/" />
+		<entry url="http://launchcast.launch.yahoo.com/radio/" />
+		<entry url="http://entertainment.msn.com/radio/" />
+		<entry url="http://betavideo.my.msn.com/" />
+	</whitelist>
+</popupcontrol>

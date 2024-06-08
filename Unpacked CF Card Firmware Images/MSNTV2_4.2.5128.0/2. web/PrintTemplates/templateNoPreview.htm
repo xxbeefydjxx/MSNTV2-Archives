@@ -1,0 +1,386 @@
+<HTML XMLNS:IE XMLNS:MSNTV>
+<HEAD>
+<?IMPORT NAMESPACE="IE" IMPLEMENTATION="#default">
+<script language="Javascript" src="../Javascript/TVShell.js"></script>
+<STYLE TYPE="text/css">
+.lorstyle
+{ 
+
+    width:8in;
+    height:10in;
+    margin:0in;
+}
+.pagestyle
+{ 
+    width:8.5in;
+    height:11in;
+    margin:0in;
+}
+.headerstyle
+{
+    position:absolute;
+	margin:0in;
+	left:0.25in;
+    top:0.25in;
+    width:8in;
+
+}
+.footerstyle
+{
+    position:absolute;
+	margin:0in;
+    left:0.25in;
+	bottom:10.75in;
+	width:8in;
+}
+
+</STYLE>
+<SCRIPT LANGUAGE="JScript">
+
+var iNextPageToCreate = 1;
+var oPageStyleClass;
+var oLorStyleClass;
+var oHeaderStyleClass;
+var oFooterStyleClass;
+var aborted=false;
+
+
+var PrintManager=TVShell.PrintManager;
+var Sink = new ActiveXObject("MSNTV.MultipleEventSink");
+
+
+// Returns the object corresponding to a named style rule
+function FindStyleRule(styleName)
+{
+    for (i = 0; i < document.styleSheets.length; i++)
+    {
+        for (j = 0; j < document.styleSheets(i).rules.length; j++)
+        {
+            if (document.styleSheets(i).rules(j).selectorText == styleName)
+                return document.styleSheets(i).rules(j);
+        }     
+    }
+}
+
+function Init()
+{
+    Sink.AttachEvent(PrintManager, "OnPrintJobCanceled", OnPrintJobCanceled);
+    Sink.AttachEvent(PrintManager, "OnCancelTemplatePrint", OnCancelTemplatePrint);
+
+    var printerSelected="";
+	printerSelected=PrintManager.SubKeyName;
+    var Orientation="";
+	Orientation=PrintManager.Orientation;
+    
+    oPageStyleClass = FindStyleRule(".pagestyle");
+    oLorStyleClass = FindStyleRule(".lorstyle");
+    oHeaderStyleClass = FindStyleRule(".headerstyle");
+    oFooterStyleClass = FindStyleRule(".footerstyle");
+	 
+   if(Orientation=="Landscape"){
+		oPageStyleClass.style.height = printer.pageWidth/100 + "in";
+		oPageStyleClass.style.width = printer.pageHeight/100 + "in";  
+
+		oLorStyleClass.style.marginLeft = printer.marginLeft/100 + "in"; 
+		oLorStyleClass.style.marginBottom = printer.marginBottom/100 + "in";
+		oLorStyleClass.style.marginTop = printer.marginTop/100 + "in";
+		oLorStyleClass.style.marginRight = printer.marginRight/100 + "in";
+	
+		oLorStyleClass.style.height= (printer.pageWidth - (printer.marginTop + printer.marginBottom))/100+"in";
+		oLorStyleClass.style.width = (printer.pageHeight - (printer.marginLeft + printer.marginRight))/100 +"in";
+
+		oHeaderStyleClass.style.left = (printer.unprintableBottom+printer.marginLeft)/100 + "in";
+		oHeaderStyleClass.style.top = printer.unprintableRight/100 + 0.25 + "in";
+		oHeaderStyleClass.style.width = (printer.pageHeight - (printer.marginLeft + printer.marginRight))/100 +"in";   
+
+		oFooterStyleClass.style.left = (printer.unprintableBottom+printer.marginLeft)/100 + "in";   
+		oFooterStyleClass.style.top = (printer.pageWidth-printer.marginTop)/100 + "in";	 
+		oFooterStyleClass.style.bottom = (printer.pageWidth-printer.marginBottom)/100+0.25 + "in";
+		oFooterStyleClass.style.width = (printer.pageHeight - (printer.marginLeft + printer.marginRight))/100 +"in";    
+	}
+	else{
+		oPageStyleClass.style.width = printer.pageWidth/100 + "in";
+		oPageStyleClass.style.height = printer.pageHeight/100 + "in";  
+
+		oLorStyleClass.style.marginTop = printer.marginTop/100 + "in"; 
+		oLorStyleClass.style.marginBottom = printer.marginBottom/100 + "in";
+ 		oLorStyleClass.style.marginLeft = printer.marginLeft/100 + "in";
+		oLorStyleClass.style.marginRight = printer.marginRight/100 + "in";
+       
+		oLorStyleClass.style.width = (printer.pageWidth- printer.marginLeft-  printer.marginRight-printer.unprintableRight)/100 +"in"; 
+		oLorStyleClass.style.height = (printer.pageHeight-printer.marginTop-printer.marginBottom-50)/100 + "in";
+
+
+		oHeaderStyleClass.style.left = printer.marginLeft/100  + "in";
+		oHeaderStyleClass.style.top = printer.unprintableTop/100 + 0.25 + "in";
+		oHeaderStyleClass.style.width = (printer.pageWidth- printer.marginLeft-  printer.marginRight-printer.unprintableRight)/100+"in"; 
+
+		
+		oFooterStyleClass.style.left = printer.marginLeft/100 + "in"; 
+        oFooterStyleClass.style.top = (printer.pageHeight-printer.unprintableBottom-printer.marginBottom-10)/100+"in";	
+		oFooterStyleClass.style.bottom = (printer.pageHeight-printer.unprintableBottom-printer.marginBottom-10)/100 +0.25+ "in";
+		oFooterStyleClass.style.width = (printer.pageWidth- printer.marginLeft-  printer.marginRight-printer.unprintableRight)/100+"in";
+
+	}
+    
+    AddFirstPage();
+}
+
+function CheckPrint()
+{
+	switch (dialogArguments.__IE_PrintType)
+	{
+		case "NoPrompt":
+			PrintPrep();
+			break;
+		default:
+			break;
+	}
+}
+
+function AddFirstPage()
+{
+    PrintManager.FirePrintStatus(0,0,0,0); // start layout
+
+    newHTML  = "<IE:DEVICERECT ID='page1' MEDIA='print' CLASS='pagestyle'>";
+    newHTML += "<IE:LAYOUTRECT ID='layoutrect1' CONTENTSRC='document' ONLAYOUTCOMPLETE='OnRectComplete()' NEXTRECT='layoutrect2' CLASS='lorstyle'/>";
+    newHTML += "</IE:DEVICERECT>";
+
+    pagecontainer.insertAdjacentHTML("afterBegin", newHTML);
+
+    headfoot.textHead = printer.header;
+    headfoot.textFoot = printer.footer;
+    headfoot.url = dialogArguments.__IE_BrowseDocument.URL;
+
+	//  If a page uses "title" as ID or name for an element other than HTML title element, 
+	//this will confuse print template. For example:http://www.airstream.com/product_line/motorhomes/interstate_home.html
+	//Desktop printout will have "[object]" as the title.  It is a known bug for IE
+	//In out code, we retrieve title through "TITLE" tag. 
+    
+	try{	
+	 headfoot.title = dialogArguments.__IE_BrowseDocument.title;
+	}
+	catch(e)
+	{
+      var collection=dialogArguments.__IE_BrowseDocument.all.tags("title");
+      if(collection.length>0)
+           headfoot.title= collection[0].innerText;
+	  else
+	       headfoot.title="";
+	}
+
+	   	   
+    headfoot.page = 1;
+    AddHeaderAndFooterToPage(1);
+
+
+    iNextPageToCreate = 2;
+}
+
+function OnRectComplete()
+{
+    if (event.contentOverflow == true){
+        AddNewPage();
+	}
+    else
+    {
+        headfoot.pageTotal = document.all.tags("DEVICERECT").length;
+        document.all("layoutrect" + (iNextPageToCreate-1)).onlayoutcomplete = null;
+
+        AddPageTotalToPages();  
+        setTimeout("CheckPrint();", 100);
+    }
+}
+
+function AddNewPage()
+{
+    document.all("layoutrect" + (iNextPageToCreate - 1)).onlayoutcomplete = null;
+    headfoot.page = iNextPageToCreate;
+    
+    newHTML  = "<IE:DEVICERECT ID='page" + iNextPageToCreate +  "' MEDIA='print' CLASS='pagestyle'>";
+    newHTML += "<IE:LAYOUTRECT ID='layoutrect" + iNextPageToCreate + "' ONLAYOUTCOMPLETE='OnRectComplete()' NEXTRECT='layoutrect" + (iNextPageToCreate + 1) + "'  CLASS='lorstyle'/>";
+    newHTML += "</IE:DEVICERECT>";
+
+    pagecontainer.insertAdjacentHTML("beforeEnd", newHTML);
+    AddHeaderAndFooterToPage(iNextPageToCreate);
+    iNextPageToCreate++;
+}
+
+function AddHeaderAndFooterToPage(pageNum)
+{
+    if(PrintManager.Header){
+	   newHeader = "<DIV CLASS='headerstyle'><table width=100%><tr><td align=left><DIV width=70% ><span width=100% style='text-overflow:ellipsis;white-space:nowrap;'><NOBR>";
+	   if(headfoot.title.length<=50)
+	       newHeader += headfoot.title;
+	   else
+	       newHeader += (headfoot.title.substring(0,49)+"...");
+	   newHeader += "</NOBR></span></DIV></td><td align=right><DIV>";
+	   newHeader += headfoot.dateShort;
+	   newHeader += "</DIV></td></tr></table></DIV>";
+	}
+    else 
+	   newHeader = "<DIV CLASS='headerstyle'></DIV>";
+
+    if(PrintManager.Footer){
+	   newFooter = "<DIV CLASS='footerstyle'><table width=100%><tr><td align=left><DIV width=70% ><span width=100% style='text-overflow:ellipsis;white-space:nowrap;'><NOBR>";
+	   if(headfoot.url.length<=50)
+	       newFooter += headfoot.url;
+	   else
+	       newFooter += (headfoot.url.substring(0,49)+"...");
+	   newFooter += "</NOBR></span></DIV></td><td align=right><DIV>";
+	   newFooter += "Page "+pageNum+"/<span class=hfPageTotal>1</span>";
+	   newFooter += "</DIV></td></tr></table></DIV>";
+	}
+	else
+	   newFooter = "<DIV CLASS='footerstyle'></DIV>";	   
+    
+    document.all("page" + pageNum).insertAdjacentHTML("afterBegin", newHeader); 
+    document.all("page" + pageNum).insertAdjacentHTML("beforeEnd", newFooter);
+}
+
+function AddPageTotalToPages()
+{
+    oSpanCollection = document.all.tags("span");
+    for (i = 0; i < oSpanCollection.length; i++)
+    {
+        if (oSpanCollection[i].className == "hfPageTotal")
+            oSpanCollection[i].innerText = headfoot.pageTotal;
+    }
+}
+
+function PrintPrep()
+{
+	if (layoutrect1.contentDocument.readyState == "complete")
+	{
+		// This block will be called when printing with user prompt
+		// because the Print dialog box gives time for the content
+		// document to complete loading
+		layoutrect1.contentDocument.onreadystatechange = null;
+		TVShell.EnableTVShellWindow();
+		PrintNow();
+	}
+	else
+	{
+		// This block will usually be called when printing w/o user prompt
+		// and sets an event handler that listens for the loading of the content
+		// document before printing. Sometimes, however, the content document
+		// will be loaded in time for the previous block to execute
+		layoutrect1.contentDocument.onreadystatechange = PrintWhenContentDocComplete;
+	}
+}
+
+function PrintWhenContentDocComplete()
+{
+	if (layoutrect1.contentDocument.readyState == "complete")
+	{
+		layoutrect1.contentDocument.onreadystatechange = null;
+        TVShell.EnableTVShellWindow();
+		PrintNow();
+	}
+}
+
+function OnPrintJobCanceled()
+{
+	TVShell.Message("Print canceled!");
+	aborted=true;
+	PrintManager.PrintTemplateClosing();
+	window.close();
+}
+function OnCancelTemplatePrint()
+{
+   printer.updatePageStatus(0)
+   aborted=true;
+   PrintManager.PrintTemplateClosing();
+   window.close();
+}
+
+function PrintNow()
+{
+	try{	
+	    var startPage;
+		var endPage;
+		var oDeviceRectCollection = document.all.tags("DEVICERECT");
+    
+
+
+		if(PrintManager.AllPages){
+			startPage = 1;
+			endPage = oDeviceRectCollection.length;
+		}
+		else{
+			startPage=PrintManager.FromPage;
+			endPage=PrintManager.ToPage;
+			if(startPage>oDeviceRectCollection.length){
+
+                var totalInfo;
+				if(oDeviceRectCollection.length==1)
+				  totalInfo="There is 1 printout page in total.";
+				else
+				  totalInfo="There are "+ oDeviceRectCollection.length +" printout pages in total.";
+
+				TVShell.PanelManager.CustomMessageBox(totalInfo+" Please specify correct page range and try again.","Invalid page range", "OK", 0,"");
+				PrintManager.FireTemplatePrintCompleted();
+				PrintManager.PrintTemplateClosing();
+				window.close();	
+				return;		
+
+			}
+			else if(endPage>oDeviceRectCollection.length)
+			{
+ 				 endPage = oDeviceRectCollection.length;
+				 PrintManager.ToPage=endPage;
+			}
+		}
+    
+		printer.startDoc("Printing from templateNoPreview.htm");
+		var copyIndex;
+		var copies=printer.copies;
+
+		for(copyIndex=1;copyIndex<=copies;copyIndex++){
+		   if(aborted)
+			  break;
+		   for (i = endPage; i >= startPage; i--){
+			  var length=oDeviceRectCollection.length;
+			  PrintManager.FirePrintStatus(copyIndex,i,length,1); //start printing this page
+			  printer.printPage(oDeviceRectCollection[i-1]);
+			  PrintManager.FirePrintStatus(copyIndex,i,length,2); // this page done
+		   }
+		   PrintManager.FirePrintStatus(copyIndex,0,0,3); // this copy done
+		}
+
+		if(!aborted){
+
+		   printer.stopDoc();
+		   //close hidden print HTMLDialog
+		   //this is important, otherwise we wouldn't be able to switch focus to other panels
+		  TVShell.Message("Template print completed!");
+		  PrintManager.FireTemplatePrintCompleted();
+		  PrintManager.PrintTemplateClosing();
+		  window.close();
+		}
+	
+	}catch(e)
+	{
+	   TVShell.Message("Warning! Print exception:"+e);
+	   PrintManager.FireTemplatePrintCompleted();
+	   PrintManager.PrintTemplateClosing();
+	   window.close();
+	}
+
+}
+</SCRIPT>
+
+</SCRIPT>
+<HEAD>
+
+<BODY ONLOAD="Init()" style="margin:0px;padding:0px" SCROLL="no">
+
+<IE:TEMPLATEPRINTER ID="printer"/>
+<IE:HEADERFOOTER ID="headfoot"/>
+
+<DIV ID="pagecontainer">
+<!-- Dynamically created pages go here. -->
+</DIV>
+
+</BODY>
+</HTML>

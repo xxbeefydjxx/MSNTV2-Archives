@@ -1,0 +1,7 @@
+L_BUTTON_CANCEL = "Cancel"
+L_BUTTON_CONTINUE = "Continue"
+L_BUTTON_DONE = "Done"
+L_BUTTON_RESET = "Reset"
+L_BUTTON_SAVE = "Save"
+L_BUTTON_SAVECHANGES = "Save Changes"
+L_BUTTON_OK = "OK"
