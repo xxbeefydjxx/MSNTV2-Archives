@@ -1,0 +1,9 @@
+<html xmlns:msntv=""><head><script>var forceReload = false;var l = 'd:'+new Date().valueOf()+'|';function setCookie(name, value){var now = new Date();var expires = new Date(now.getFullYear()+1, now.getMonth(), now.getDate());document.cookie = escape(name) + '=' + escape(value) + ';expires=' + expires.toGMTString() + ';path=/';}function getCookie(name){var str = document.cookie;var arr = str.split('; ');for (var i=arr.length-1; i>=0; i--){var c = arr[i].split('=');if (c.length != 2)continue;if (unescape(c[0]) == name)return unescape(c[1]);}return null;}function syncCookie(cookieName, propValue){var c = getCookie(cookieName);l += 'g:'+cookieName+':'+c+'|';if (c != propValue){setCookie(cookieName, propValue);l += 's:'+cookieName+':'+propValue+'|';var check = getCookie(cookieName);if(check == propValue)forceReload = true;}}var d = new Date();var utcOffset = d.getTimezoneOffset();syncCookie('UserUtcOffset', utcOffset);</script>
+	
+	<!--?import namespace="msntv" implementation="/Shared/Anduril/HTC/en-us/Progress.htc"-->
+
+	
+		<title>MSN Video</title>
+		<script src="/Include.ashx?type=js&amp;target=http%3a%2f%2flocalhost%3a1700%2fShared%2fBaseClient%2fJsTransforms%2fen-us%2fPaneHelp.xslt&amp;v=2.0.261.788" language="javascript" defer="true"></script>
+		<link href="/Include.ashx?type=css&amp;target=http%3a%2f%2flocalhost%3a1700%2fMSNVideo%2fAnduril%2fCssTransforms%2fen-us%2fMain.xslt&amp;v=2.0.261.788" type="text/css" rel="StyleSheet">
+		<script src="/Include.ashx?type=js&amp;target=http%3a%2f%2flocalhost%3a1700%2fMSNVideo%2fAnduril%2fJsTransforms%2fen-us%2fMain.xslt&amp;v=2.0.261.788" language="javascript"></script></head></html>
